@@ -2,3 +2,4 @@
 desired_targets=1
 normalize_scale_factors=1
 iterations=20000
+report_details=0
