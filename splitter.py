@@ -255,6 +255,8 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
             if num_files_to_sim == 1 or is_last_stage:
                 html_file = os.path.join(base_path, str(output_time) + "-" + basename + ".html")
                 outputs.append('html={}'.format(html_file))
+                json_file = os.path.join(base_path, str(output_time) + "-" + basename + ".json")
+                outputs.append('json2={}'.format(json_file))
             cmd = _generateCommand(file,
                                   sim_options,
                                   outputs)
