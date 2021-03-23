@@ -320,7 +320,8 @@ def get_analyzer_data(class_spec):
 def determineSimcVersionOnDisc():
     """gets the version of our simc installation on disc"""
     try:
-        p = subprocess.run([settings.simc_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        simcPath = os.path.expanduser(settings.simc_path)
+        p = subprocess.run([simcPath], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         match = None
         for raw_line in p.stdout.decode():
             decoded_line = raw_line
@@ -471,7 +472,7 @@ def validateSettings(args):
     """Check input arguments and settings.py options"""
     # Check simc executable availability.
     if args.sim:
-        if not os.path.exists(settings.simc_path):
+        if not os.path.exists(os.path.expanduser(settings.simc_path)):
             raise FileNotFoundError(_("Simc executable at '{}' does not exist.").format(settings.simc_path))
         else:
             logging.debug(_("Simc executable exists at '{}', proceeding...").format(settings.simc_path))
@@ -1201,7 +1202,7 @@ def grab_profiles(player_profile, stage):
         except Exception as e:
             msg = "Error while checking result files in {}: {}\nPlease restart AutoSimc at a previous stage.". \
                 format(subdir_previous_stage, e)
-            raise RuntimeError(msg) from e
+            # raise RuntimeError(msg) from e
         if settings.default_grabbing_method == _("target_error"):
             filter_by = "target_error"
             filter_criterium = None

@@ -150,7 +150,7 @@ def _generate_sim_options(output_file, sim_type, simtype_value, is_last_stage, p
 def _generateCommand(file, global_option_file, outputs):
     """Generate command line arguments to invoke SimulationCraft"""
     cmd = []
-    cmd.append(os.path.normpath(settings.simc_path))
+    cmd.append(os.path.normpath(os.path.expanduser(settings.simc_path)))
     cmd.append("input={}".format(global_option_file))
     cmd.append("input={}".format(file))
     for output in outputs:
@@ -200,22 +200,19 @@ def _launch_simc_commands(commands, is_last_stage):
     logging.info("Number of worker instances: {}.".format(num_workers))
     logging.debug("Starting simc with commands={}".format(commands))
     try:
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=num_workers)
-        counter = 0
-        results = []
-        for command in commands:
-            results.append(executor.submit(_worker, command, counter, len(commands), starttime, num_workers))
-            counter += 1
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(_worker, command, idx, len(commands), starttime, num_workers) : (idx, command) for (idx, command) in enumerate(commands)}
 
         # Check if we got any simulations with error code != 0. futures.as_completed gives us the results as soon as a
         # simulation is finished.
-        for future in concurrent.futures.as_completed(results):
-            r = int(future.result())
-            if r != 0:
-                logging.error("Invalid return code from SimC: {}".format(r))
+        for future in concurrent.futures.as_completed(futures):
+            print(future.result())
+            returnCode = int(future.result())
+            if returnCode != 0:
+                logging.error("Invalid return code from SimC: {}".format(returnCode))
                 # Hacky way to shut down all remaining sims, apparently just calling shutdown(wait=False0 on the
                 # executor does not have the same effect.
-                for f in results:
+                for f in futures:
                     f.cancel()
                 executor.shutdown(wait=False)
                 return False
@@ -223,7 +220,7 @@ def _launch_simc_commands(commands, is_last_stage):
         return True
     except KeyboardInterrupt:
         logging.warning("KeyboardInterrupt in simc executor. Stopping.")
-        for f in results:
+        for f in futures:
             f.cancel()
         executor.shutdown(wait=False)
         raise
@@ -335,8 +332,8 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     logging.info("Selecting by metric: '{}'.".format(metric))
     metric_regex = re.compile("\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
-        if os.stat(file).st_size <= 0:
-            raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))
+        # if os.stat(file).st_size <= 0:
+            # raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))
 
         with open(file, encoding='utf-8', mode="r") as src:
             current_player = {}

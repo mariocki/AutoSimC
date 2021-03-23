@@ -10,7 +10,7 @@ from settings import settings
 
 path = settings.analyzer_path
 combined_path = os.path.join(os.getcwd(), path)
-simc_path = settings.simc_path
+simc_path = os.path.expanduser(settings.simc_path)
 
 raw_data = []
 analyzed_data = []
