@@ -6,9 +6,6 @@
 # Please update the script accordingly for your own distribution.
 #######
 
-echo "NOTE: Running this script for the first time is recommended as sudo/root incase any simc dependencies are missing."
-echo "NOTE: If you already have the dependencies (build-essential libssl-dev) installed, you do not need root."
-
 input=$1 # input file if not the normal one.
 auto_simc_pwd=$(pwd) # current directory to get back to later.
 

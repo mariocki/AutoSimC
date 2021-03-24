@@ -35,7 +35,8 @@ def _parse_profiles_from_file(fd, user_class):
 
 
 def _dump_profiles_to_file(filename, profiles):
-    logging.debug("Writing {} profiles to file {}.".format(len(profiles), filename))
+    logging.debug("Writing {} profiles to file {}.".format(
+        len(profiles), filename))
     with open(filename, "w") as out:
         for line in profiles:
             out.write(line)
@@ -47,7 +48,8 @@ def _purge_subfolder(subfolder):
         try:
             os.makedirs(subfolder)
         except Exception as e:
-            raise RuntimeError(_("Error creating subfolder '{}': {}.").format(e)) from e
+            raise RuntimeError(
+                _("Error creating subfolder '{}': {}.").format(e)) from e
     else:
         # Avoid PermissionError when re-creating directory directly after deleting the tree.
         # See https://stackoverflow.com/a/16375240
@@ -69,7 +71,8 @@ def split(inputfile, destination_folder, size, wow_class):
     """
     if size <= 0:
         raise ValueError("Invalid split size {} <= 0.".format(size))
-    logging.info("Splitting profiles in {} into chunks of size {}.".format(inputfile, size))
+    logging.info(
+        "Splitting profiles in {} into chunks of size {}.".format(inputfile, size))
     print("This may take a while...")
     logging.debug("wow_class={}".format(wow_class))
 
@@ -82,14 +85,16 @@ def split(inputfile, destination_folder, size, wow_class):
             profile.append("")  # Add tailing empty line
             bestprofiles.append("\n".join(profile))
             if len(bestprofiles) >= size:
-                outfile = os.path.join(destination_folder, "sim" + str(outfile_count) + ".simc")
+                outfile = os.path.join(
+                    destination_folder, "sim" + str(outfile_count) + ".simc")
                 _dump_profiles_to_file(outfile, bestprofiles)
                 num_profiles += len(bestprofiles)
                 bestprofiles.clear()
                 outfile_count += 1
     # Write tail
     if len(bestprofiles):
-        outfile = os.path.join(destination_folder, "sim" + str(outfile_count) + ".simc")
+        outfile = os.path.join(destination_folder, "sim" +
+                               str(outfile_count) + ".simc")
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
         num_profiles += len(bestprofiles)
@@ -109,7 +114,8 @@ def _prepare_fight_style(player_profile, cmd):
             for entry in player_profile.fightstyle:
                 if entry.startswith("line"):
                     file.write(player_profile.fightstyle[entry]+"\n")
-            cmd.append('input=' + os.path.join(os.getcwd(), settings.additional_input_file))
+            cmd.append('input=' + os.path.join(os.getcwd(),
+                       settings.additional_input_file))
     return cmd
 
 
@@ -130,7 +136,7 @@ def _generate_sim_options(output_file, sim_type, simtype_value, is_last_stage, p
     # For simulations with a high target_error, we want to get a faster execution (eg. only 47 iterations)
     # instead of the default minimum of ~100 iterations. This options tells SimC to more often check target_error
     # condition while simulating.
-    if sim_type is "target_error" and simtype_value > 0.1:
+    if sim_type == "target_error" and simtype_value > 0.1:
         cmd.append('analyze_error_interval=10')
 
     if is_last_stage:
@@ -176,14 +182,18 @@ def _worker(command, counter, maximum, starttime, num_workers):
         logging.debug("Error while calculating progress time.", exc_info=True)
 
     if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-        p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.run(command, stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE)
     else:
         p = subprocess.run(command)
     if p.returncode != 0:
-        logging.error("SimulationCraft error! Worker #{} returned error code {}.".format(counter, p.returncode))
+        logging.error("SimulationCraft error! Worker #{} returned error code {}.".format(
+            counter, p.returncode))
         if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-            logging.info("SimulationCraft #{} stderr: \n{}".format(counter, p.stderr.read().decode()))
-            logging.debug("SimulationCraft #{} stdout: \n{}".format(counter, p.stdout.read().decode()))
+            logging.info("SimulationCraft #{} stderr: \n{}".format(
+                counter, p.stderr.read().decode()))
+            logging.debug("SimulationCraft #{} stdout: \n{}".format(
+                counter, p.stdout.read().decode()))
     return p.returncode
 
 
@@ -201,21 +211,26 @@ def _launch_simc_commands(commands, is_last_stage):
     logging.debug("Starting simc with commands={}".format(commands))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(_worker, command, idx, len(commands), starttime, num_workers) : (idx, command) for (idx, command) in enumerate(commands)}
+            futures = {executor.submit(_worker, command, idx, len(commands), starttime, num_workers): (
+                idx, command) for (idx, command) in enumerate(commands)}
 
         # Check if we got any simulations with error code != 0. futures.as_completed gives us the results as soon as a
         # simulation is finished.
         for future in concurrent.futures.as_completed(futures):
-            print(future.result())
-            returnCode = int(future.result())
-            if returnCode != 0:
-                logging.error("Invalid return code from SimC: {}".format(returnCode))
-                # Hacky way to shut down all remaining sims, apparently just calling shutdown(wait=False0 on the
-                # executor does not have the same effect.
-                for f in futures:
-                    f.cancel()
-                executor.shutdown(wait=False)
-                return False
+            try:
+                returnCode = int(future.result())
+                if returnCode != 0:
+                    logging.error(
+                        "Invalid return code from SimC: {}".format(returnCode))
+                    # Hacky way to shut down all remaining sims, apparently just calling shutdown(wait=False0 on the
+                    # executor does not have the same effect.
+                    for f in futures:
+                        f.cancel()
+                    executor.shutdown(wait=False)
+                    return False
+            except Exception as ex:
+                logging.error(f'Exception raised by worker: {ex}')
+
         executor.shutdown()
         return True
     except KeyboardInterrupt:
@@ -238,12 +253,14 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
 
     num_files_to_sim = len(files_to_sim)
     if num_files_to_sim == 0:
-        raise ValueError("Number of files to sim in stage {} is 0. Check path (spaces? special chars?)".format(stage))
+        raise ValueError(
+            "Number of files to sim in stage {} is 0. Check path (spaces? special chars?)".format(stage))
 
     # First generate global simc options
     base_path, _filename = os.path.split(files_to_sim[0])
     sim_options = os.path.join(base_path, "arguments.simc")
-    _generate_sim_options(sim_options, simtype, simtype_value, is_last_stage, player_profile, num_files_to_sim)
+    _generate_sim_options(sim_options, simtype, simtype_value,
+                          is_last_stage, player_profile, num_files_to_sim)
 
     # Generate arguments for launching simc for each splitted file
     commands = []
@@ -251,15 +268,18 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
         if file.endswith(".simc"):
             base_path, filename = os.path.split(file)
             basename, _extension = os.path.splitext(filename)
-            outputs = ['output=' + os.path.join(base_path, basename + '.result')]
+            outputs = ['output=' +
+                       os.path.join(base_path, basename + '.result')]
             if num_files_to_sim == 1 or is_last_stage:
-                html_file = os.path.join(base_path, str(output_time) + "-" + basename + ".html")
+                html_file = os.path.join(base_path, str(
+                    output_time) + "-" + basename + ".html")
                 outputs.append('html={}'.format(html_file))
-                json_file = os.path.join(base_path, str(output_time) + "-" + basename + ".json")
+                json_file = os.path.join(base_path, str(
+                    output_time) + "-" + basename + ".json")
                 outputs.append('json2={}'.format(json_file))
             cmd = _generateCommand(file,
-                                  sim_options,
-                                  outputs)
+                                   sim_options,
+                                   outputs)
             commands.append(cmd)
     return _launch_simc_commands(commands, is_last_stage)
 
@@ -274,7 +294,8 @@ def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stag
     files = [os.path.join(subdir, f) for f in files]
 
     start = datetime.datetime.now()
-    result = _start_simulation(files, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles)
+    result = _start_simulation(
+        files, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles)
     end = datetime.datetime.now()
     logging.info("Simulation took {}.".format(end - start))
     return result
@@ -332,10 +353,11 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     start = datetime.datetime.now()
     metric = settings.select_by_metric
     logging.info("Selecting by metric: '{}'.".format(metric))
-    metric_regex = re.compile("\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
+    metric_regex = re.compile(
+        "\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
         # if os.stat(file).st_size <= 0:
-            # raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))
+        # raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))
 
         with open(file, encoding='utf-8', mode="r") as src:
             current_player = {}
@@ -357,11 +379,13 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
                 best.append(current_player)
                 current_player = {}
 
-    logging.debug("Parsing input files for {} took: {}".format(metric, datetime.datetime.now() - start))
+    logging.debug("Parsing input files for {} took: {}".format(
+        metric, datetime.datetime.now() - start))
 
     # sort best metric, descending order
     best = list(reversed(sorted(best, key=lambda entry: entry["metric"])))
-    logging.debug("Result from parsing {} with metric '{}' len={}".format(metric, metric, len(best)))
+    logging.debug("Result from parsing {} with metric '{}' len={}".format(
+        metric, metric, len(best)))
 
     if filter_by == "target_error":
         filterd_best = _filter_by_target_error(best)
@@ -388,7 +412,8 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
 
     # Determine chunk length we want to split the profiles
     if split_optimally:
-        chunk_length = int(len(sortednames) // settings.number_of_instances) + 1
+        chunk_length = int(len(sortednames) //
+                           settings.number_of_instances) + 1
     else:
         chunk_length = int(settings.splitting_size)
     if chunk_length < 1:
@@ -414,16 +439,19 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
                 logging.debug("Added {} to best list.".format(profilename))
                 # If we reached chunk length, dump collected profiles and reset, so we do not store everything in memory
                 if len(bestprofiles) >= chunk_length:
-                    outfile = os.path.join(target_subdir, "best" + str(outfile_count) + ".simc")
+                    outfile = os.path.join(
+                        target_subdir, "best" + str(outfile_count) + ".simc")
                     _dump_profiles_to_file(outfile, bestprofiles)
                     bestprofiles.clear()
                     outfile_count += 1
 
     # Write tail
     if len(bestprofiles):
-        outfile = os.path.join(target_subdir, "best" + str(outfile_count) + ".simc")
+        outfile = os.path.join(target_subdir, "best" +
+                               str(outfile_count) + ".simc")
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
 
-    logging.info(_("Got {} best profiles written to {} files..").format(num_profiles, outfile_count))
+    logging.info(_("Got {} best profiles written to {} files..").format(
+        num_profiles, outfile_count))
     return num_profiles

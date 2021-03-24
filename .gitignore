@@ -11,6 +11,7 @@ temp_step2/
 temp_step3/
 tmp/
 .cache/
+cache/
 
 logs.txt
 error.txt

@@ -1,6 +1,10 @@
 # pylint: disable=C0103
 # pylint: disable=C0301
 
+import gettext
+import splitter
+import specdata
+from settings import settings
 import configparser
 import sys
 import datetime
@@ -17,22 +21,19 @@ import subprocess
 import hashlib
 import re
 from urllib.error import URLError
-from urllib.request import urlopen, urlretrieve
+from urllib.request import urlopen, urlretrieve, Request
 import platform
 import locale
-
-from settings import settings
+import xml.etree.ElementTree as ET
+from termcolor import colored, cprint
 
 try:
     from settings_local import settings
 except ImportError:
     pass
-import specdata
-import splitter
 
 __version__ = "9.0.1"
 
-import gettext
 
 gettext.install('AutoSimC')
 translator = gettext.translation('AutoSimC', fallback=True)
@@ -87,7 +88,8 @@ def install_translation():
     try:
         if default_lang is not None:
             default_lang = [default_lang]
-        lang = gettext.translation('AutoSimC', localedir='locale', languages=default_lang)
+        lang = gettext.translation(
+            'AutoSimC', localedir='locale', languages=default_lang)
         lang.install()
         global translator
         translator = lang
@@ -126,6 +128,7 @@ def stable_unique(seq):
     seen_add = seen.add
     return [x for x in seq if not (x in seen or seen_add(x))]
 
+
 def get_additional_input():
     input_encoding = 'utf-8'
     options = []
@@ -134,14 +137,15 @@ def get_additional_input():
             for line in f:
                 if not line.startswith("#"):
                     options.append(line)
-            
+
     except UnicodeDecodeError as e:
         raise RuntimeError("""AutoSimC could not decode your additional input file '{file}' with encoding '{enc}'.
         Please make sure that your text editor encodes the file as '{enc}',
         or as a quick fix remove any special characters from your character name.""".format(file=additionalFileName,
                                                                                             enc=input_encoding)) from e
-    
+
     return "".join(options)
+
 
 def build_gem_list(gem_lists):
     """Build list of unique gem ids from --gems argument"""
@@ -302,7 +306,8 @@ def get_analyzer_data(class_spec):
     Get precomputed analysis data (target_error, iterations, elapsed_time_seconds) for a given class_spec
     """
     result = []
-    filename = os.path.join(os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
+    filename = os.path.join(
+        os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
     with open(filename, "r") as f:
         file = json.load(f)
         for variant in file[0]:
@@ -321,13 +326,15 @@ def determineSimcVersionOnDisc():
     """gets the version of our simc installation on disc"""
     try:
         simcPath = os.path.expanduser(settings.simc_path)
-        p = subprocess.run([simcPath], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        p = subprocess.run([simcPath], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT)
         match = None
         for raw_line in p.stdout.decode():
             decoded_line = raw_line
             try:
                 # git build <branch> <git-ref>
-                match = re.search(r'git build \S* (\S+)\)', decoded_line).group(1)
+                match = re.search(r'git build \S* (\S+)\)',
+                                  decoded_line).group(1)
                 if match:
                     logging.debug(_("Found program in {}: Git_Version: {}")
                                   .format(settings.simc_path,
@@ -339,23 +346,28 @@ def determineSimcVersionOnDisc():
         if match is None:
             logging.info(_("Found no git-string in simc.exe, self-compiled?"))
     except FileNotFoundError:
-        logging.info(_("Did not find program in '{}'.").format(settings.simc_path))
+        logging.info(_("Did not find program in '{}'.").format(
+            settings.simc_path))
 
 
 def determineLatestSimcVersion():
     """gets the version of the latest binaries available on the net"""
     try:
-        html = urlopen('http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
+        html = urlopen(
+            'http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
     except URLError:
-        logging.info("Could not access download directory on simulationcraft.org")
-    #filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
-    filename = list(filter(None, re.findall(r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
+        logging.info(
+            "Could not access download directory on simulationcraft.org")
+    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
+    filename = list(filter(None, re.findall(
+        r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
     head, _tail = os.path.splitext(filename)
     latest_git_version = head.split("-")[-1]
     logging.debug(_("Latest version available: {}").format(latest_git_version))
 
     if not len(latest_git_version):
-        logging.info(_("Found no git-string in filename, new or changed format?"))
+        logging.info(
+            _("Found no git-string in filename, new or changed format?"))
 
     return (filename, latest_git_version)
 
@@ -381,11 +393,14 @@ def autoDownloadSimc():
 
     # Get filename of latest build of simc
     try:
-        html = urlopen('http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
+        html = urlopen(
+            'http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
     except URLError:
-        logging.info("Could not access download directory on simulationcraft.org")
-    #filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
-    filename = list(filter(None, re.findall(r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
+        logging.info(
+            "Could not access download directory on simulationcraft.org")
+    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
+    filename = list(filter(None, re.findall(
+        r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
     print(_("Latest simc: {filename}").format(filename=filename))
 
     # Download latest build of simc
@@ -396,19 +411,23 @@ def autoDownloadSimc():
                                                                     filepath))
         urlretrieve(url, filepath)
     else:
-        logging.debug(_("Latest simc version already downloaded at {}.").format(filename))
+        logging.debug(
+            _("Latest simc version already downloaded at {}.").format(filename))
 
     # Unpack downloaded build and set simc_path
-    settings.simc_path = os.path.join(download_dir, filename[:filename.find(".7z")], "simc.exe")
+    settings.simc_path = os.path.join(
+        download_dir, filename[:filename.find(".7z")], "simc.exe")
     splitter.simc_path = settings.simc_path
     if not os.path.exists(settings.simc_path):
         seven_zip_executables = ["7z.exe", "C:/Program Files/7-Zip/7z.exe"]
         for seven_zip_executable in seven_zip_executables:
             try:
                 if not os.path.exists(seven_zip_executable):
-                    logging.info(_("7Zip executable at '{}' does not exist.").format(seven_zip_executable))
+                    logging.info(_("7Zip executable at '{}' does not exist.").format(
+                        seven_zip_executable))
                     continue
-                cmd = seven_zip_executable + ' x "' + filepath + '" -aoa -o"' + download_dir + '"'
+                cmd = seven_zip_executable + ' x "' + \
+                    filepath + '" -aoa -o"' + download_dir + '"'
                 logging.debug(_("Running unpack command '{}'").format(cmd))
                 subprocess.call(cmd)
 
@@ -416,7 +435,8 @@ def autoDownloadSimc():
                 files = glob.glob(download_dir + '/simc*win64*7z')
                 for f in files:
                     if not os.path.basename(f) == filename:
-                        print(_("Removing old simc from '{}'.").format(os.path.basename(f)))
+                        print(_("Removing old simc from '{}'.").format(
+                            os.path.basename(f)))
                         os.remove(f)
                 break
             except Exception as e:
@@ -438,6 +458,109 @@ def cleanup_subdir(subdir):
         shutil.rmtree(subdir)
 
 
+def fetch_from_wowhead(dict, ilvl):
+    if not os.path.exists("cache"):
+        os.makedirs("cache")
+
+    filename = f'cache/{dict["id"]}.json'
+    if os.path.isfile(filename):
+        with open(filename, "r") as f:
+            json_string = f.read()
+        return json_string
+
+    try:
+        hdr = {'Accept': 'text/html,application/xhtml+xml,*/*',
+               "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"}
+        url = f'https://www.wowhead.com/item={dict["id"]}&xml'
+        if "bonus_id" in dict:
+            bonus_id = dict["bonus_id"].replace('/', ':')
+            url = url + f'&bonus={bonus_id}'
+        if "enchant_id" in dict:
+            url = url + f'&ench={dict["enchant_id"]}'
+        if ilvl != 0:
+            url = url + f'&ilvl={ilvl}'
+
+        req = Request(url, headers=hdr)
+        with urlopen(req) as socket:
+            xml = socket.read().decode('UTF-8')
+        root = ET.fromstring(xml)
+        item_json = json.loads('{' + root.find('item/json').text + '}')
+        # set the ilvl and quality in the JSON from the XML
+        item_json["quality"] = int(root.find('item/quality').attrib["id"])
+        item_json["level"] = int(root.find('item/level').text)
+        json_string = json.dumps(item_json)
+        with open(filename, "w") as f:
+            f.write(json_string)
+        return json_string
+    except URLError as ex:
+        logging.info(f'Could not access download from wowhead {ex.reason}')
+        return ""
+
+
+item_colors = {
+    0: lambda x: colored(x.replace('_', ' ').title(), 'grey'),
+    1: lambda x: colored(x.replace('_', ' ').title(), 'white'),
+    2: lambda x: colored(x.replace('_', ' ').title(), 'green'),
+    3: lambda x: colored(x.replace('_', ' ').title(), 'blue'),
+    4: lambda x: colored(x.replace('_', ' ').title(), 'magenta'),
+    5: lambda x: colored(x.replace('_', ' ').title(), 'yellow')
+}
+
+stat_names = {
+    "Str": "Strength",
+    "Agi": "Agility",
+    "Sta": "Stamina",
+    "Int": "Intellect",
+    "SP": "SpellPower",
+    "AP": "Ap",
+    "Crit": "CritRating",
+    "Haste": "HasteRating",
+    "Mastery": "MasteryRating",
+    "Vers": "Versatility",
+    "Wdps": "Dps",
+    "WOHdps": "OffHandDps",
+    "Armor": "Armor",
+    "Bonusarmor": "BonusArmor",
+    "Leech": "Leech",
+    "Runspeed": "RunSpeed",
+    "Latency": "Latency"
+}
+
+
+def print_best(filename):
+    with open(filename) as f:
+        results = json.load(f)
+    currentBestDps = 0
+    currentBestIndex = ""
+
+    for player in results["sim"]["players"]:
+        if player["collected_data"]["dpse"]["mean"] > currentBestDps:
+            currentBestDps = player["collected_data"]["dpse"]["mean"]
+            currentBestIndex = player["name"]
+
+    print(colored(currentBestIndex.upper().split('_')[0], 'green'), colored(f'{currentBestDps:8.0f}', 'red'))
+
+    for player in results["sim"]["players"]:
+        if player["name"] == currentBestIndex:
+            for slot, item in player["gear"].items():
+                d = dict(x.split("=") for x in ('name=' + item["encoded_item"]).split(','))
+
+                json_string = fetch_from_wowhead(d, item["ilevel"])
+                item_json = json.loads(json_string)
+
+                print(f'{slot.ljust(11).title()} {item_colors[item_json["quality"]](d["name"])}', colored(f'[{item["ilevel"]}]', 'white'))
+
+            name = player["name"].split('_')[0]
+            player_class = player["specialization"].split(' ')[1]
+            spec = player["specialization"].split(' ')[0]
+            pawn_string = f'(Pawn: v1: \"{name}\": Class={player_class}, Spec={spec},'
+            for stat, value in player["scale_factors"].items():
+                pawn_string = pawn_string + f'{stat_names[stat]}={value:2.2f}, '
+            pawn_string = pawn_string.rstrip(', ') + ')'
+            print('\n')
+            print(pawn_string)
+
+
 def copy_result_file(last_subdir):
     result_folder = os.path.abspath(settings.result_subfolder)
     if not os.path.exists(result_folder):
@@ -449,15 +572,16 @@ def copy_result_file(last_subdir):
     if os.path.exists(last_subdir):
         for _root, _dirs, files in os.walk(last_subdir):
             for file in files:
-                if file.endswith(".html"):
+                if file.endswith(".html") or file.endswith(".json"):
                     src = os.path.join(last_subdir, file)
                     dst = os.path.join(result_folder, file)
                     logging.info(_("Moving file: {} to {}").format(src, dst))
                     shutil.move(src, dst)
                     found_html = True
+                    if file.endswith(".json"):
+                        print_best(os.path.join(result_folder, file))
     if not found_html:
-        logging.warning(_("Could not copy html result file, since there was no file found in '{}'.")
-                        .format(last_subdir))
+        logging.warning(_("Could not copy html result file, since there was no file found in '{}'.").format(last_subdir))
 
 
 def cleanup():
@@ -481,18 +605,17 @@ def validateSettings(args):
                 raise RuntimeError(_("Simc executable must end with 'simc.exe', and '{}' does not."
                                      "Please check your settings.py simc_path options.").format(settings.simc_path))
 
-        analyzer_path = os.path.join(os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
+        analyzer_path = os.path.join(
+            os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
         if os.path.exists(analyzer_path):
             logging.info(_("Analyzer-file found at '{}'.").format(analyzer_path))
         else:
-            raise RuntimeError(_("Analyzer-file not found at '{}', make sure you have a complete AutoSimc-Package.").
-                               format(analyzer_path))
+            raise RuntimeError(_("Analyzer-file not found at '{}', make sure you have a complete AutoSimc-Package.").format(analyzer_path))
 
     # validate tier-set
     min_tier_sets = 0
     max_tier_sets = 6
-    tier_sets = {"Tier26": (t26min, t26max)
-                 }
+    tier_sets = {"Tier26": (t26min, t26max)}
 
     total_min = 0
     for tier_name, (tier_set_min, tier_set_max) in tier_sets.items():
@@ -537,7 +660,8 @@ def file_checksum(filename):
 def get_gem_combinations(gems_to_use, num_gem_slots):
     if num_gem_slots <= 0:
         return []
-    combinations = itertools.combinations_with_replacement(gems_to_use, r=num_gem_slots)
+    combinations = itertools.combinations_with_replacement(
+        gems_to_use, r=num_gem_slots)
     return list(combinations)
 
 
@@ -580,7 +704,8 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
         pct = 100.0 * current / maximum
         elapsed = datetime.datetime.now() - start_time
         bandwith = current / 1000 / elapsed.total_seconds() if elapsed.total_seconds() else 0.0
-        bandwith_valid = valid_profiles / 1000 / elapsed.total_seconds() if elapsed.total_seconds() else 0.0
+        bandwith_valid = valid_profiles / 1000 / \
+            elapsed.total_seconds() if elapsed.total_seconds() else 0.0
         elapsed = chop_microseconds(elapsed)
         remaining_time = elapsed * (100.0 / pct - 1.0) if current else "nan"
         if current > maximum:
@@ -706,7 +831,8 @@ class PermutationData:
     def write_to_file(self, filehandler, valid_profile_number, additional_options):
         profile_name = self.get_profile_name(valid_profile_number)
 
-        filehandler.write("{}={}\n".format(self.profile.wow_class, str.replace(self.profile.profile_name, "\"","")+"_"+profile_name))
+        filehandler.write("{}={}\n".format(self.profile.wow_class, str.replace(
+            self.profile.profile_name, "\"", "")+"_"+profile_name))
         filehandler.write(self.profile.general_options)
         filehandler.write("\ntalents={}\n".format(self.talents))
         filehandler.write(self.get_profile())
@@ -774,23 +900,27 @@ def build_profile_simc_addon(args):
                         continue
                     else:
                         # gear-in-bag handling
-                        splittedLine = line.replace("#", "").replace("\n", "").lstrip().rstrip().split("=", 1)
+                        splittedLine = line.replace("#", "").replace(
+                            "\n", "").lstrip().rstrip().split("=", 1)
                         for gearslot in gear_slots:
                             if splittedLine[0].replace("\n", "") == gearslot[0]:
                                 gearInBags[splittedLine[0].replace("\n", "")].append(
                                     splittedLine[1].replace("\n", "").lstrip().rstrip())
                             # trinket and finger-handling
-                            trinketOrRing = splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")
+                            trinketOrRing = splittedLine[0].replace(
+                                "\n", "").replace("1", "").replace("2", "")
                             if (trinketOrRing == "finger" or trinketOrRing == "trinket") and trinketOrRing == gearslot[
-                                0]:
+                                    0]:
                                 gearInBags[splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")].append(
                                     splittedLine[1].lstrip().rstrip())
                 else:
                     splittedLine = line.split("=", 1)
                     if splittedLine[0].replace("\n", "") in valid_classes:
-                        c_class = splittedLine[0].replace("\n", "").lstrip().rstrip()
+                        c_class = splittedLine[0].replace(
+                            "\n", "").lstrip().rstrip()
                         player_profile.wow_class = c_class
-                        player_profile.profile_name = splittedLine[1].replace("\n", "").lstrip().rstrip()
+                        player_profile.profile_name = splittedLine[1].replace(
+                            "\n", "").lstrip().rstrip()
                     if splittedLine[0].replace("\n", "") in simc_profile_options:
                         player_profile.simc_options[splittedLine[0].replace("\n", "")] = splittedLine[1].replace("\n",
                                                                                                                  "").lstrip().rstrip()
@@ -799,7 +929,8 @@ def build_profile_simc_addon(args):
                             gear[splittedLine[0].replace("\n", "")].append(
                                 splittedLine[1].replace("\n", "").lstrip().rstrip())
                         # trinket and finger-handling
-                        trinketOrRing = splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")
+                        trinketOrRing = splittedLine[0].replace(
+                            "\n", "").replace("1", "").replace("2", "")
                         if (trinketOrRing == "finger" or trinketOrRing == "trinket") and trinketOrRing == gearslot[0]:
                             gear[splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")].append(
                                 splittedLine[1].lstrip().rstrip())
@@ -810,14 +941,17 @@ def build_profile_simc_addon(args):
         or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile,
                                                                                             enc=input_encoding)) from e
     if c_class != "":
-        player_profile.class_spec = specdata.getClassSpec(c_class, player_profile.simc_options["spec"])
-        player_profile.class_role = specdata.getRole(c_class, player_profile.simc_options["spec"])
+        player_profile.class_spec = specdata.getClassSpec(
+            c_class, player_profile.simc_options["spec"])
+        player_profile.class_role = specdata.getRole(
+            c_class, player_profile.simc_options["spec"])
 
     # Build 'general' profile options which do not permutate once into a simc-string
     logging.info("SimC options: {}".format(player_profile.simc_options))
     player_profile.general_options = "\n".join(["{}={}".format(key, value) for key, value in
                                                 player_profile.simc_options.items()])
-    logging.debug("Built simc general options string: {}".format(player_profile.general_options))
+    logging.debug("Built simc general options string: {}".format(
+        player_profile.general_options))
 
     # Parse gear
     player_profile.simc_options["gear"] = gear
@@ -911,12 +1045,15 @@ class Item:
                    self.name,
                    self.item_id)
         if len(self.bonus_ids):
-            self.output_str += ",bonus_id=" + "/".join([str(v) for v in self.bonus_ids])
+            self.output_str += ",bonus_id=" + \
+                "/".join([str(v) for v in self.bonus_ids])
         if len(self.enchant_ids):
-            self.output_str += ",enchant_id=" + "/".join([str(v) for v in self.enchant_ids])
+            self.output_str += ",enchant_id=" + \
+                "/".join([str(v) for v in self.enchant_ids])
         if len(self.gem_ids):
-            self.output_str += ",gem_id=" + "/".join([str(v) for v in self.gem_ids])
-        if self.drop_level>0:
+            self.output_str += ",gem_id=" + \
+                "/".join([str(v) for v in self.gem_ids])
+        if self.drop_level > 0:
             self.output_str += ",drop_level=" + str(self.drop_level)
         for name, values in self.extra_options.items():
             for value in values:
@@ -979,7 +1116,8 @@ def permutate(args, player_profile):
             if entry in gear:
                 if len(gear[entry]) > 0:
                     for s in gear[entry].split("|"):
-                        parsed_gear[slot_base_name].append(Item(slot_base_name, s))
+                        parsed_gear[slot_base_name].append(
+                            Item(slot_base_name, s))
         if len(parsed_gear[slot_base_name]) == 0:
             # We havent found any items for that slot, add empty dummy item
             parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
@@ -1012,7 +1150,8 @@ def permutate(args, player_profile):
             max_gem_slots += max_gem_on_item_slot
 
     # Add 'normal' gear to normal permutations, excluding trinket/rings
-    gear_normal = {k: v for k, v in parsed_gear.items() if (not k == "finger" and not k == "trinket")}
+    gear_normal = {k: v for k, v in parsed_gear.items() if (
+        not k == "finger" and not k == "trinket")}
     normal_permutation_options.update(gear_normal)
 
     # Calculate normal permutations
@@ -1040,7 +1179,8 @@ def permutate(args, player_profile):
             # Unique finger/trinkets.
             permutations = itertools.combinations(entries, len(values))
         else:
-            permutations = itertools.combinations_with_replacement(entries, len(values))
+            permutations = itertools.combinations_with_replacement(
+                entries, len(values))
         permutations = list(permutations)
         for i, (item1, item2) in enumerate(permutations):
             new_item1 = copy.deepcopy(item1)
@@ -1056,7 +1196,8 @@ def permutate(args, player_profile):
 
         # Remove equal id's
         if args.unique_jewelry:
-            permutations = [p for p in permutations if p[0].item_id != p[1].item_id]
+            permutations = [
+                p for p in permutations if p[0].item_id != p[1].item_id]
             logging.debug(_("Got {num} permutations for {item_name} after id filter.")
                           .format(num=len(permutations),
                                   item_name=name))
@@ -1089,7 +1230,8 @@ def permutate(args, player_profile):
     gem_perms = 1
     if args.gems is not None:
         max_num_gems = max_gem_slots + len(splitted_gems)
-        gem_perms = len(list(itertools.combinations_with_replacement(range(max_gem_slots), max_num_gems)))
+        gem_perms = len(list(itertools.combinations_with_replacement(
+            range(max_gem_slots), max_num_gems)))
         max_nperm *= gem_perms
         permutations_product["gems"] = gem_perms
     permutations_product["talents"] = len(talent_permutations)
@@ -1115,12 +1257,14 @@ def permutate(args, player_profile):
                     entries += perm_finger
                     entries += perm_trinket
                     items = {e.slot: e for e in entries if type(e) is Item}
-                    data = PermutationData(items, player_profile, max_profile_chars)
+                    data = PermutationData(
+                        items, player_profile, max_profile_chars)
                     is_unusable_before_talents = data.check_usable_before_talents()
                     if not is_unusable_before_talents:
                         # add gem-permutations to gear
                         if args.gems is not None:
-                            gem_permutations = data.permutate_gems(items, splitted_gems)
+                            gem_permutations = data.permutate_gems(
+                                items, splitted_gems)
                         else:
                             gem_permutations = (items,)
                         for gem_permutation in gem_permutations:
@@ -1129,14 +1273,16 @@ def permutate(args, player_profile):
                             for t in talent_permutations:
                                 data.update_talents(t)
                                 # Additional talent usable check could be inserted here.
-                                data.write_to_file(output_file, valid_profiles, additional_options)
+                                data.write_to_file(
+                                    output_file, valid_profiles, additional_options)
                                 valid_profiles += 1
                                 processed += 1
                     else:
                         processed += len(talent_permutations) * gem_perms
                         if is_unusable_before_talents not in unusable_histogram:
                             unusable_histogram[is_unusable_before_talents] = 0
-                        unusable_histogram[is_unusable_before_talents] += len(talent_permutations) * gem_perms
+                        unusable_histogram[is_unusable_before_talents] += len(
+                            talent_permutations) * gem_perms
                     progress += 1
                     print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars,
                                                progress, max_progress)
@@ -1152,7 +1298,8 @@ def permutate(args, player_profile):
     for key, value in unusable_histogram.items():
         unusable_string.append("{:40s}: {:12b} ({:5.2f}%)".
                                format(key, value, value * 100.0 / max_nperm if max_nperm else 0.0))
-    logging.info(_("Invalid profile statistics: [\n{}]").format("\n".join(unusable_string)))
+    logging.info(_("Invalid profile statistics: [\n{}]").format(
+        "\n".join(unusable_string)))
 
     # Print checksum so we can check for equality when making changes in the code
     outfile_checksum = file_checksum(args.outputfile)
@@ -1179,8 +1326,10 @@ def checkResultFiles(subdir):
         if os.stat(file).st_size <= 0:
             raise RuntimeError("Result file '{}' is empty.".format(file))
 
-    logging.debug("{} valid result files found in {}.".format(len(files), subdir))
-    logging.info("Checked all files in " + str(subdir) + " : Everything seems to be alright.")
+    logging.debug(
+        "{} valid result files found in {}.".format(len(files), subdir))
+    logging.info("Checked all files in " + str(subdir) +
+                 " : Everything seems to be alright.")
 
 
 def get_subdir(stage):
@@ -1213,7 +1362,8 @@ def grab_profiles(player_profile, stage):
         num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage,
                                                     get_subdir(stage), outputFileName, not is_last_stage)
     if num_generated_profiles:
-        logging.info("Found {} profile(s) to simulate.".format(num_generated_profiles))
+        logging.info("Found {} profile(s) to simulate.".format(
+            num_generated_profiles))
     return num_generated_profiles
 
 
@@ -1253,7 +1403,8 @@ def static_stage(player_profile, stage):
         if settings.skip_questions:
             raise ValueError(_("Cannot run static mode and skip questions without default iterations set for stage {}.")
                              .format(stage))
-        iterations_choice = input(_("Please enter the number of iterations to use (q to quit): "))
+        iterations_choice = input(
+            _("Please enter the number of iterations to use (q to quit): "))
         if iterations_choice == "q":
             logging.info(_("Quitting application"))
             sys.exit(0)
@@ -1276,7 +1427,8 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     print(_("Estimated calculation times for stage {} based on your data:").format(stage))
     for i, (target_error, iterations, elapsed_time_seconds) in enumerate(result_data):
         elapsed_time = datetime.timedelta(seconds=elapsed_time_seconds)
-        estimated_time = chop_microseconds(elapsed_time * num_generated_profiles) if num_generated_profiles else None
+        estimated_time = chop_microseconds(
+            elapsed_time * num_generated_profiles) if num_generated_profiles else None
         print(_("({:2n}): Target Error: {:6.3f}%:  Est. calc. time: {} (time/profile: {:5.2f}s iterations: {:5n}) ").
               format(i,
                      target_error,
@@ -1295,9 +1447,10 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
         if settings.skip_questions:
             raise ValueError(
                 _("Cannot run dynamic mode and skip questions without default target_error set for stage {}.")
-                    .format(stage))
+                .format(stage))
         else:
-            calc_choice = input(_("Please enter the type of calculation to perform (q to quit): "))
+            calc_choice = input(
+                _("Please enter the type of calculation to perform (q to quit): "))
             if calc_choice == "q":
                 logging.info(_("Quitting application"))
                 sys.exit(0)
@@ -1305,7 +1458,8 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
         if calc_choice >= len(result_data) or calc_choice < 0:
             raise ValueError(_("Invalid calc choice '{}' can only be from 0 to {}").format(calc_choice,
                                                                                            len(result_data) - 1))
-        logging.info(_("Sim: Number of permutations: ") + str(num_generated_profiles))
+        logging.info(_("Sim: Number of permutations: ") +
+                     str(num_generated_profiles))
         logging.info(_("Sim: Chosen calculation: {}").format(calc_choice))
 
         target_error, _iterations, _elapsed_time_seconds = result_data[calc_choice]
@@ -1323,8 +1477,10 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
             logging.info(_("Quitting application"))
             sys.exit(0)
         if new_value == "n":
-            target_error = float(input(_("Enter new target_error (Format: 0.3): ")))
-            logging.info(_("User entered target_error_secondpart: ") + str(target_error))
+            target_error = float(
+                input(_("Enter new target_error (Format: 0.3): ")))
+            logging.info(
+                _("User entered target_error_secondpart: ") + str(target_error))
 
     # Show estimated sim time based on users chosen target_error
     if num_generated_profiles:
@@ -1336,42 +1492,45 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
                     elapsed_time * num_generated_profiles) if num_generated_profiles else None
                 logging.info(
                     _("Chosen Target Error: {:.3f}% <= {:.3f}%:  Time/Profile: {:5.2f} sec => Est. calc. time: {}").
-                        format(target_error,
-                               te,
-                               elapsed_time.total_seconds(),
-                               estimated_time)
+                    format(target_error,
+                           te,
+                           elapsed_time.total_seconds(),
+                           estimated_time)
                 )
                 if not settings.skip_questions:
                     if estimated_time and estimated_time.total_seconds() > 43200:  # 12h
                         if input(_("Warning: This might take a *VERY* long time ({}) (q to quit, Enter to continue: )").
-                                         format(estimated_time)) == "q":
+                                 format(estimated_time)) == "q":
                             logging.info(_("Quitting application"))
                             sys.exit(0)
                 break
         else:
-            logging.warning(_("Could not provide any estimated calculation time."))
+            logging.warning(
+                _("Could not provide any estimated calculation time."))
     is_last_stage = (stage == num_stages)
     splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile,
                       stage, is_last_stage, num_generated_profiles)
-    dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
+    dynamic_stage(player_profile, num_generated_profiles,
+                  target_error, stage + 1)
 
 
 def start_stage(player_profile, num_generated_profiles, stage):
     logging.info(_("Starting at stage {}").format(stage))
-    logging.info(_("You selected grabbing method '{}'.").format(settings.default_grabbing_method))
-    print("")
-    print(_("You have to choose one of the following modes for calculation:"))
-    print(_("1) Static mode uses a fixed number of iterations, with varying error per profile ({num_iterations})").
-          format(num_iterations=settings.default_iterations))
-    print(_("   It is however faster if simulating huge amounts of profiles"))
-    print(_(
-        "2) Dynamic mode (preferred) lets you choose a specific 'correctness' of the calculation, but takes more time."))
-    print(
-        _("   It uses the chosen target_error for the first part; in stage2 onwards, the following values are used: {}")
-            .format(settings.default_target_error))
+    logging.info(_("You selected grabbing method '{}'.").format(
+        settings.default_grabbing_method))
     if settings.skip_questions:
         mode_choice = int(settings.auto_choose_static_or_dynamic)
     else:
+        print("")
+        print(_("You have to choose one of the following modes for calculation:"))
+        print(_("1) Static mode uses a fixed number of iterations, with varying error per profile ({num_iterations})").
+              format(num_iterations=settings.default_iterations))
+        print(_("   It is however faster if simulating huge amounts of profiles"))
+        print(_(
+            "2) Dynamic mode (preferred) lets you choose a specific 'correctness' of the calculation, but takes more time."))
+        print(
+            _("   It uses the chosen target_error for the first part; in stage2 onwards, the following values are used: {}")
+            .format(settings.default_target_error))
         mode_choice = input(_("Please choose your mode (Enter to exit): "))
         if not len(mode_choice):
             logging.info(_("User exit."))
@@ -1424,7 +1583,8 @@ def addFightStyle(profile):
                               .format(index=i,
                                       name=f["name"],
                                       desc=f["description"]))
-                    fightstylechoose = int(input(_("Enter the number for your fightstyle: ")))
+                    fightstylechoose = int(
+                        input(_("Enter the number for your fightstyle: ")))
                     if fightstylechoose < 0 or fightstylechoose >= len(fights):
                         raise ValueError(_("Wrong number ({}) for fightstyles chosen."
                                            " Must be greater between {} and {}.")
@@ -1439,9 +1599,11 @@ def addFightStyle(profile):
                         raise ValueError(_("No fightstyle found in .json with name: {}, exiting.")
                                          .format(settings.default_fightstyle))
             else:
-                raise RuntimeError(_("Did not find entries in fight_style.json."))
+                raise RuntimeError(
+                    _("Did not find entries in fight_style.json."))
         except json.decoder.JSONDecodeError as error:
-            logging.error(_("Error while decoding JSON file: {}").format(error), exc_info=True)
+            logging.error(_("Error while decoding JSON file: {}").format(
+                error), exc_info=True)
             sys.exit(1)
 
     assert profile.fightstyle is not None
@@ -1462,7 +1624,8 @@ class UntranslatedFileHandler(logging.FileHandler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setFormatter(logging.Formatter("%(asctime)-15s %(levelname)s %(message)s"))
+        self.setFormatter(logging.Formatter(
+            "%(asctime)-15s %(levelname)s %(message)s"))
 
     def emit(self, record):
         if isinstance(record.msg, TranslatedText):
@@ -1479,16 +1642,18 @@ class UntranslatedFileHandler(logging.FileHandler):
 def main():
     global class_spec
 
-    error_handler = UntranslatedFileHandler(settings.errorFileName, encoding="utf-8")
+    error_handler = UntranslatedFileHandler(
+        settings.errorFileName, encoding="utf-8")
     error_handler.setLevel(logging.ERROR)
 
     # Handler to log messages to file
-    log_handler = UntranslatedFileHandler(settings.logFileName, encoding="utf-8")
+    log_handler = UntranslatedFileHandler(
+        settings.logFileName, encoding="utf-8")
     log_handler.setLevel(logging.DEBUG)
 
     # Handler for logging to stdout
     stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.setLevel(logging.ERROR)
     stdout_handler.setFormatter(logging.Formatter("%(message)s"))
 
     logging.basicConfig(level=logging.DEBUG, handlers=[error_handler,
@@ -1498,7 +1663,8 @@ def main():
     # check version of python-interpreter running the script
     check_interpreter()
 
-    logging.debug("----------------------------------------------------------------------------")
+    logging.debug(
+        "----------------------------------------------------------------------------")
     logging.info(_("AutoSimC - Supported WoW-Version: {}").format(__version__))
 
     args = handleCommandLine()
@@ -1512,8 +1678,8 @@ def main():
     if args.sim:
         if not settings.auto_download_simc:
             if settings.check_simc_version:
-                filename, latest = determineLatestSimcVersion();
-                ondisc = determineSimcVersionOnDisc();
+                filename, latest = determineLatestSimcVersion()
+                ondisc = determineSimcVersionOnDisc()
                 if latest != ondisc:
                     logging.info(_("A newer SimCraft-version might be available for download! Version: {}").
                                  format(filename))
@@ -1528,7 +1694,8 @@ def main():
     if args.sim == "all" or args.sim is None:
         start = datetime.datetime.now()
         num_generated_profiles = permutate(args, player_profile)
-        logging.info(_("Permutating took {}.").format(datetime.datetime.now() - start))
+        logging.info(_("Permutating took {}.").format(
+            datetime.datetime.now() - start))
         outputGenerated = True
     elif args.sim == "stage1":
         if input(_("Do you want to generate {outfile} again? Press y to regenerate: ").format(
