@@ -146,13 +146,6 @@ For developers/power users:
   Since this file is not part of AutoSimc source, it will not be overridden/commited when pulling/pushing to
   the AutoSimC remote repository.
   For now, please ensure that your local copy stays in sync with settings.py whenever new options are added/renamed.
-
-## Analyzer:
-Included is Analyzer.py, which uses the standard-simc-profiles for each class to generate a Analysis.json (in profiles-folder), which represents calculation data for each class/spec.
- It is used in the main-program to show the approximate calculation times, therefore it is only needed to be recalculated at major WoW- and Simcraft-updates, e.g. 7.2.5, and if you want to sim your tank- or healspec. Edit the Analysis.py accordingly.
-
- Modules needed: marshmallow (pip install marshmallow) for generating json-files easier
-
 ## Fight-Type Selector:
 In fight_types.json you can define your personal fight_types. In settings.py you must select the desired fight style in the option *default_fightstyle*.
 The standard simc-profiles are already included, it is advised not to touch these.

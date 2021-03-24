@@ -3,3 +3,4 @@ desired_targets=1
 iterations=10000
 report_details=0
 scale_only=str,agi,sta,int,sp,ap,crit,haste,mastery,vers,wdps,wohdps,armor,bonusarmor,leech,runspeed,latency
+use_item_verification=0
