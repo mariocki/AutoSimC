@@ -301,154 +301,6 @@ def handleCommandLine():
     return args
 
 
-def get_analyzer_data(class_spec):
-    """
-    Get precomputed analysis data (target_error, iterations, elapsed_time_seconds) for a given class_spec
-    """
-    result = []
-    filename = os.path.join(
-        os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
-    with open(filename, "r") as f:
-        file = json.load(f)
-        for variant in file[0]:
-            for p in variant["playerdata"]:
-                if p["specialization"] == class_spec:
-                    for s in range(len(p["specdata"])):
-                        item = (float(variant["target_error"]),
-                                int(p["specdata"][s]["iterations"]),
-                                float(p["specdata"][s]["elapsed_time_seconds"])
-                                )
-                        result.append(item)
-    return result
-
-
-def determineSimcVersionOnDisc():
-    """gets the version of our simc installation on disc"""
-    try:
-        simcPath = os.path.expanduser(settings.simc_path)
-        p = subprocess.run([simcPath], stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT)
-        match = None
-        for raw_line in p.stdout.decode():
-            decoded_line = raw_line
-            try:
-                # git build <branch> <git-ref>
-                match = re.search(r'git build \S* (\S+)\)',
-                                  decoded_line).group(1)
-                if match:
-                    logging.debug(_("Found program in {}: Git_Version: {}")
-                                  .format(settings.simc_path,
-                                          match))
-                    return match
-            except AttributeError:
-                # should only contain other lines from simc_standard-output
-                pass
-        if match is None:
-            logging.info(_("Found no git-string in simc.exe, self-compiled?"))
-    except FileNotFoundError:
-        logging.info(_("Did not find program in '{}'.").format(
-            settings.simc_path))
-
-
-def determineLatestSimcVersion():
-    """gets the version of the latest binaries available on the net"""
-    try:
-        html = urlopen(
-            'http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
-    except URLError:
-        logging.info(
-            "Could not access download directory on simulationcraft.org")
-    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
-    filename = list(filter(None, re.findall(
-        r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
-    head, _tail = os.path.splitext(filename)
-    latest_git_version = head.split("-")[-1]
-    logging.debug(_("Latest version available: {}").format(latest_git_version))
-
-    if not len(latest_git_version):
-        logging.info(
-            _("Found no git-string in filename, new or changed format?"))
-
-    return (filename, latest_git_version)
-
-
-def autoDownloadSimc():
-    if not settings.auto_download_simc:
-        return
-    try:
-        if settings.auto_download_simc:
-            if platform.system() != "Windows" or not platform.machine().endswith('64'):
-                print(_("Sorry autodownloading only supported for 64bit windows"))
-                return
-    except AttributeError:
-        return
-
-    logging.info(_("Starting auto download check of SimulationCraft."))
-
-    # Application root path, and destination path
-    rootpath = os.path.dirname(os.path.realpath(__file__))
-    download_dir = os.path.join(rootpath, "auto_download")
-    if not os.path.exists(download_dir):
-        os.makedirs(download_dir)
-
-    # Get filename of latest build of simc
-    try:
-        html = urlopen(
-            'http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
-    except URLError:
-        logging.info(
-            "Could not access download directory on simulationcraft.org")
-    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
-    filename = list(filter(None, re.findall(
-        r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
-    print(_("Latest simc: {filename}").format(filename=filename))
-
-    # Download latest build of simc
-    filepath = os.path.join(download_dir, filename)
-    if not os.path.exists(filepath):
-        url = 'http://downloads.simulationcraft.org/nightly/' + filename
-        logging.info(_("Retrieving simc from url {} to {}.").format(url,
-                                                                    filepath))
-        urlretrieve(url, filepath)
-    else:
-        logging.debug(
-            _("Latest simc version already downloaded at {}.").format(filename))
-
-    # Unpack downloaded build and set simc_path
-    settings.simc_path = os.path.join(
-        download_dir, filename[:filename.find(".7z")], "simc.exe")
-    splitter.simc_path = settings.simc_path
-    if not os.path.exists(settings.simc_path):
-        seven_zip_executables = ["7z.exe", "C:/Program Files/7-Zip/7z.exe"]
-        for seven_zip_executable in seven_zip_executables:
-            try:
-                if not os.path.exists(seven_zip_executable):
-                    logging.info(_("7Zip executable at '{}' does not exist.").format(
-                        seven_zip_executable))
-                    continue
-                cmd = seven_zip_executable + ' x "' + \
-                    filepath + '" -aoa -o"' + download_dir + '"'
-                logging.debug(_("Running unpack command '{}'").format(cmd))
-                subprocess.call(cmd)
-
-                # keep the latest 7z to remember current version, but clean up any other ones
-                files = glob.glob(download_dir + '/simc*win64*7z')
-                for f in files:
-                    if not os.path.basename(f) == filename:
-                        print(_("Removing old simc from '{}'.").format(
-                            os.path.basename(f)))
-                        os.remove(f)
-                break
-            except Exception as e:
-                print(_("Exception when unpacking: {}").format(e))
-        else:
-            raise RuntimeError(_("Could not unpack the auto downloaded SimulationCraft executable."
-                                 "Please note that you need 7Zip installed at one of the following locations: {}.").
-                               format(seven_zip_executables))
-    else:
-        print(_("Simc already exists at '{}'.").format(repr(settings.simc_path)))
-
-
 def cleanup_subdir(subdir):
     if os.path.exists(subdir):
         if not settings.delete_temp_default and not settings.skip_questions:
@@ -604,13 +456,6 @@ def validateSettings(args):
             if not settings.simc_path.endswith("simc.exe"):
                 raise RuntimeError(_("Simc executable must end with 'simc.exe', and '{}' does not."
                                      "Please check your settings.py simc_path options.").format(settings.simc_path))
-
-        analyzer_path = os.path.join(
-            os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
-        if os.path.exists(analyzer_path):
-            logging.info(_("Analyzer-file found at '{}'.").format(analyzer_path))
-        else:
-            raise RuntimeError(_("Analyzer-file not found at '{}', make sure you have a complete AutoSimc-Package.").format(analyzer_path))
 
     # validate tier-set
     min_tier_sets = 0
@@ -1422,21 +1267,6 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
 
     num_generated_profiles = prepare_profiles(player_profile, stage)
 
-    # Display estimated simulation time information to user
-    result_data = get_analyzer_data(player_profile.class_spec)
-    print(_("Estimated calculation times for stage {} based on your data:").format(stage))
-    for i, (target_error, iterations, elapsed_time_seconds) in enumerate(result_data):
-        elapsed_time = datetime.timedelta(seconds=elapsed_time_seconds)
-        estimated_time = chop_microseconds(
-            elapsed_time * num_generated_profiles) if num_generated_profiles else None
-        print(_("({:2n}): Target Error: {:6.3f}%:  Est. calc. time: {} (time/profile: {:5.2f}s iterations: {:5n}) ").
-              format(i,
-                     target_error,
-                     estimated_time,
-                     elapsed_time.total_seconds(),
-                     iterations)
-              )
-
     try:
         target_error = float(settings.default_target_error[stage])
     except Exception:
@@ -1482,31 +1312,6 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
             logging.info(
                 _("User entered target_error_secondpart: ") + str(target_error))
 
-    # Show estimated sim time based on users chosen target_error
-    if num_generated_profiles:
-        result_data = get_analyzer_data(player_profile.class_spec)
-        for i, (te, _iterations, elapsed_time_seconds) in enumerate(result_data):
-            if target_error <= te:
-                elapsed_time = datetime.timedelta(seconds=elapsed_time_seconds)
-                estimated_time = chop_microseconds(
-                    elapsed_time * num_generated_profiles) if num_generated_profiles else None
-                logging.info(
-                    _("Chosen Target Error: {:.3f}% <= {:.3f}%:  Time/Profile: {:5.2f} sec => Est. calc. time: {}").
-                    format(target_error,
-                           te,
-                           elapsed_time.total_seconds(),
-                           estimated_time)
-                )
-                if not settings.skip_questions:
-                    if estimated_time and estimated_time.total_seconds() > 43200:  # 12h
-                        if input(_("Warning: This might take a *VERY* long time ({}) (q to quit, Enter to continue: )").
-                                 format(estimated_time)) == "q":
-                            logging.info(_("Quitting application"))
-                            sys.exit(0)
-                break
-        else:
-            logging.warning(
-                _("Could not provide any estimated calculation time."))
     is_last_stage = (stage == num_stages)
     splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile,
                       stage, is_last_stage, num_generated_profiles)
@@ -1653,7 +1458,7 @@ def main():
 
     # Handler for logging to stdout
     stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setLevel(logging.ERROR)
+    stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(logging.Formatter("%(message)s"))
 
     logging.basicConfig(level=logging.DEBUG, handlers=[error_handler,
@@ -1675,15 +1480,6 @@ def main():
     logging.debug(_("Parsed command line arguments: {}").format(args))
     logging.debug(_("Parsed settings: {}").format(vars(settings)))
 
-    if args.sim:
-        if not settings.auto_download_simc:
-            if settings.check_simc_version:
-                filename, latest = determineLatestSimcVersion()
-                ondisc = determineSimcVersionOnDisc()
-                if latest != ondisc:
-                    logging.info(_("A newer SimCraft-version might be available for download! Version: {}").
-                                 format(filename))
-        autoDownloadSimc()
     validateSettings(args)
 
     player_profile = build_profile_simc_addon(args)
