@@ -2,10 +2,11 @@ import os
 import shutil
 import subprocess
 import datetime
-import logging
 import concurrent.futures
 import re
 import math
+
+from main import logger
 
 try:
     from settings_local import settings
@@ -29,7 +30,7 @@ def _parse_profiles_from_file(fd, user_class):
 
 
 def _dump_profiles_to_file(filename, profiles):
-    logging.debug("Writing {} profiles to file {}.".format(
+    logger.debug("Writing {} profiles to file {}.".format(
         len(profiles), filename))
     with open(filename, "w") as out:
         for line in profiles:
@@ -41,8 +42,8 @@ def _purge_subfolder(subfolder):
     if not os.path.exists(subfolder):
         try:
             os.makedirs(subfolder)
-        except Exception as e:
-            raise RuntimeError(f'Error creating subfolder "{subfolder}": {e}.') from e
+        except Exception as ex:
+            raise RuntimeError(f'Error creating subfolder "{subfolder}": {ex}.') from e
     else:
         # Avoid PermissionError when re-creating directory directly after deleting the tree.
         # See https://stackoverflow.com/a/16375240
@@ -64,8 +65,8 @@ def split(inputfile, destination_folder, size, wow_class):
     """
     if size <= 0:
         raise ValueError("Invalid split size {} <= 0.".format(size))
-    logging.info("Splitting profiles in {} into chunks of size {}.".format(inputfile, size))
-    logging.debug("wow_class={}".format(wow_class))
+    logger.info("Splitting profiles in {} into chunks of size {}.".format(inputfile, size))
+    logger.debug("wow_class={}".format(wow_class))
 
     num_profiles = 0
     bestprofiles = []
@@ -138,7 +139,7 @@ def _generate_sim_options(output_file, sim_type, simtype_value, is_last_stage, p
             cmd.append('scale_only=agi,crit,haste,mastery,vers')
         elif player_profile.class_role == "spell":
             cmd.append('scale_only=int,crit,haste,mastery,vers')
-    logging.info("Commandline: {}".format(cmd))
+    logger.info("Commandline: {}".format(cmd))
     with open(output_file, "w") as f:
         f.write(" ".join(cmd))
 
@@ -155,27 +156,27 @@ def _generateCommand(file, global_option_file, outputs):
 
 
 def _worker(command, counter, maximum, starttime, num_workers):
-    logging.info(f'Processing: {command[2]} {counter + 1}/{maximum}')
+    logger.info(f'Processing: {command[2]} {counter + 1}/{maximum}')
     try:
         if counter > 0 and counter % num_workers == 0:
             duration = datetime.datetime.now() - starttime
             avg_calctime_hist = duration / counter
             remaining_time = (maximum - counter) * avg_calctime_hist
             finish_time = datetime.datetime.now() + remaining_time
-            logging.info("Remaining calculation time (est.): {}.".format(remaining_time))
-            logging.info("Finish time (est.): {}".format(finish_time))
+            logger.info("Remaining calculation time (est.): {}.".format(remaining_time))
+            logger.info("Finish time (est.): {}".format(finish_time))
     except Exception:
-        logging.error('Error while calculating progress time.', exc_info=True)
+        logger.error('Error while calculating progress time.', exc_info=True)
 
     if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
         p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     else:
         p = subprocess.run(command)
     if p.returncode != 0:
-        logging.error(f'SimulationCraft error! Worker #{counter} returned error code {p.returncode}.')
+        logger.error(f'SimulationCraft error! Worker #{counter} returned error code {p.returncode}.')
         if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-            logging.info("SimulationCraft #{} stderr: \n{}".format(counter, p.stderr.read().decode()))
-            logging.debug("SimulationCraft #{} stdout: \n{}".format(counter, p.stdout.read().decode()))
+            logger.info("SimulationCraft #{} stderr: \n{}".format(counter, p.stderr.read().decode()))
+            logger.debug("SimulationCraft #{} stdout: \n{}".format(counter, p.stdout.read().decode()))
     return p.returncode
 
 
@@ -186,11 +187,11 @@ def _launch_simc_commands(commands, is_last_stage):
         num_workers = 1
     else:
         num_workers = settings.number_of_instances
-    logging.info("-----------------------------------------------------------------")
-    logging.info("Starting multi-process simulation.")
-    logging.info("Number of work items: {}.".format(len(commands)))
-    logging.info("Number of worker instances: {}.".format(num_workers))
-    logging.debug("Starting simc with commands={}".format(commands))
+    logger.info("-----------------------------------------------------------------")
+    logger.info("Starting multi-process simulation.")
+    logger.info("Number of work items: {}.".format(len(commands)))
+    logger.info("Number of worker instances: {}.".format(num_workers))
+    logger.debug("Starting simc with commands={}".format(commands))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = {executor.submit(_worker, command, idx, len(commands), starttime, num_workers): (
@@ -202,7 +203,7 @@ def _launch_simc_commands(commands, is_last_stage):
             try:
                 returnCode = int(future.result())
                 if returnCode != 0:
-                    logging.error(
+                    logger.error(
                         "Invalid return code from SimC: {}".format(returnCode))
                     # Hacky way to shut down all remaining sims, apparently just calling shutdown(wait=False0 on the
                     # executor does not have the same effect.
@@ -211,12 +212,12 @@ def _launch_simc_commands(commands, is_last_stage):
                     executor.shutdown(wait=False)
                     return False
             except Exception as ex:
-                logging.error(f'Exception raised by worker: {ex}')
+                logger.error(f'Exception raised by worker: {ex}')
 
         executor.shutdown()
         return True
     except KeyboardInterrupt:
-        logging.warning("KeyboardInterrupt in simc executor. Stopping.")
+        logger.warning("KeyboardInterrupt in simc executor. Stopping.")
         for f in futures:
             f.cancel()
         executor.shutdown(wait=False)
@@ -262,8 +263,8 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
 
 def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stage, num_profiles, scale):
     """Start the simulation process for a given stage/input"""
-    logging.info("Starting simulation.")
-    logging.debug("Started simulation with {}".format(locals()))
+    logger.info("Starting simulation.")
+    logger.debug("Started simulation with {}".format(locals()))
     subdir = os.path.join(os.getcwd(), subdir)
     files = os.listdir(subdir)
     files = [f for f in files if not f.endswith(".result")]
@@ -272,7 +273,7 @@ def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stag
     start = datetime.datetime.now()
     result = _start_simulation(files, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles, scale)
     end = datetime.datetime.now()
-    logging.info("Simulation took {}.".format(end - start))
+    logger.info("Simulation took {}.".format(end - start))
     return result
 
 
@@ -308,24 +309,24 @@ def _filter_by_target_error(metric_results):
 
 def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin, split_optimally=True):
     """Determine best simulations and grabs their profiles for further simming"""
-    logging.info(f'Grab Best variables: filter by: {filter_by}')
-    logging.info(f'Grab Best variables: filter_criterium: {filter_criterium}')
-    logging.info(f'Grab Best variables: target_subdir: {target_subdir}')
-    logging.info(f'Grab Best variables: origin: {origin}')
+    logger.info(f'Grab Best variables: filter by: {filter_by}')
+    logger.info(f'Grab Best variables: filter_criterium: {filter_criterium}')
+    logger.info(f'Grab Best variables: target_subdir: {target_subdir}')
+    logger.info(f'Grab Best variables: origin: {origin}')
 
     user_class = ''
 
     best = []
     source_subdir = os.path.join(os.getcwd(), source_subdir)
-    logging.info(f'Variables: source_subdir: {source_subdir}')
+    logger.info(f'Variables: source_subdir: {source_subdir}')
     files = os.listdir(source_subdir)
     files = [f for f in files if f.endswith(".result")]
     files = [os.path.join(source_subdir, f) for f in files]
-    logging.debug("Grabbing files: {}".format(files))
+    logger.debug("Grabbing files: {}".format(files))
 
     start = datetime.datetime.now()
     metric = settings.select_by_metric
-    logging.info("Selecting by metric: '{}'.".format(metric))
+    logger.info("Selecting by metric: '{}'.".format(metric))
     metric_regex = re.compile("\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
         # if os.stat(file).st_size <= 0:
@@ -351,12 +352,12 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
                 best.append(current_player)
                 current_player = {}
 
-    logging.debug("Parsing input files for {} took: {}".format(
+    logger.debug("Parsing input files for {} took: {}".format(
         metric, datetime.datetime.now() - start))
 
     # sort best metric, descending order
     best = list(reversed(sorted(best, key=lambda entry: entry["metric"])))
-    logging.debug("Result from parsing {} with metric '{}' len={}".format(
+    logger.debug("Result from parsing {} with metric '{}' len={}".format(
         metric, metric, len(best)))
 
     if filter_by == "target_error":
@@ -366,9 +367,9 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     else:
         raise ValueError("Invalid filter")
 
-    logging.debug(f'Filtered metric results len={len(filterd_best)}')
+    logger.debug(f'Filtered metric results len={len(filterd_best)}')
     for entry in filterd_best:
-        logging.debug(f'{entry}')
+        logger.debug(f'{entry}')
 
     sortednames = [entry["name"] for entry in filterd_best]
 
@@ -388,13 +389,13 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
         chunk_length = 1
     if chunk_length > int(settings.splitting_size):
         chunk_length = int(settings.splitting_size)
-    logging.debug("Chunk length: {}".format(chunk_length))
+    logger.debug("Chunk length: {}".format(chunk_length))
 
     if not os.path.exists(target_subdir):
         os.makedirs(target_subdir)
 
     # now parse our "database" and extract the profiles of our top n
-    logging.debug("Getting sim input from file {}.".format(origin))
+    logger.debug("Getting sim input from file {}.".format(origin))
     with open(origin, "r") as source:
         subfolder = target_subdir
         _purge_subfolder(subfolder)
@@ -404,7 +405,7 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
                 profile.append("")  # Add tailing empty line
                 bestprofiles.append("\n".join(profile))
                 num_profiles += 1
-                logging.debug("Added {} to best list.".format(profilename))
+                logger.debug("Added {} to best list.".format(profilename))
                 # If we reached chunk length, dump collected profiles and reset, so we do not store everything in memory
                 if len(bestprofiles) >= chunk_length:
                     outfile = os.path.join(target_subdir, "best" + str(outfile_count) + ".simc")
@@ -418,5 +419,5 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
 
-    logging.info(f'Got {num_profiles} best profiles written to {outfile_count} files..')
+    logger.info(f'Got {num_profiles} best profiles written to {outfile_count} files..')
     return num_profiles

@@ -1,6 +1,3 @@
-# pylint: disable=C0103
-# pylint: disable=C0301
-
 import sys
 import datetime
 import os
@@ -43,11 +40,6 @@ gear_slots = [("head",),
               ("main_hand",),
               ("off_hand",)]
 
-
-# Var init with default value
-t26min = int(settings.default_equip_t26_min)
-t26max = int(settings.default_equip_t26_max)
-
 gem_ids = {"16haste": 311865,
            "haste": 311865,  # always contains available maximum quality
            "16crit": 311863,
@@ -59,8 +51,21 @@ gem_ids = {"16haste": 311865,
            }
 
 # Global logger instance
-coloredlogs.install(fmt='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger()
+if (logger.hasHandlers()):
+    logger.handlers.clear()
+logger.setLevel(logging.DEBUG)
+
+log_handler = logging.FileHandler('autosimc.log', encoding='utf-8')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+log_handler.setFormatter(formatter)
+logger.addHandler(log_handler)
+
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.INFO)
+color_formatter = coloredlogs.ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+stdout_handler.setFormatter(color_formatter)
+logger.addHandler(stdout_handler)
 
 
 def stable_unique(seq):
@@ -107,12 +112,12 @@ def build_gem_list(gem_lists):
         # Unique by gem id, so that if user specifies eg. 200haste,haste there will only be 1 gem added.
         gems = stable_unique(gems)
         sorted_gem_list += gems
-    logging.debug(f'Parsed gem list to permutate: {sorted_gem_list}')
+    logger.debug(f'Parsed gem list to permutate: {sorted_gem_list}')
     return sorted_gem_list
 
 
 def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
+    return v.lower() in ('yes', 'true', 't', '1', 'y')
 
 
 def parse_command_line_args():
@@ -207,17 +212,6 @@ def parse_command_line_args():
                         default="true",
                         help='Assume ring and trinkets are unique-equipped, and only a single item id can be equipped.')
 
-    parser.add_argument('-d', '--debug',
-                        dest="debug",
-                        action='store_true',
-                        help='Write debug information to log file.')
-
-    # TODO Handle quiet argument in the code
-    parser.add_argument('-quiet', '--quiet',
-                        dest="quiet",
-                        action='store_true',
-                        help=r'Run quietly. \! Not implemented yet')
-
     parser.add_argument('-version', '--version',
                         action='version', version='%(prog)s {}'.format(__version__))
 
@@ -256,7 +250,7 @@ def handleCommandLine():
 
 def cleanup_subdir(subdir):
     if os.path.exists(subdir):
-        logging.debug(("Removing subdir '{}'.").format(subdir))
+        logger.debug(f'Removing subdir "{subdir}".')
         shutil.rmtree(subdir)
 
 
@@ -295,7 +289,7 @@ def fetch_from_wowhead(dict, ilvl):
             f.write(json_string)
         return json_string
     except URLError as ex:
-        logging.warning(f'Could not access download from wowhead {ex.reason}')
+        logger.warning(f'Could not access download from wowhead {ex.reason}')
         return ""
 
 
@@ -371,7 +365,7 @@ def print_best(filename):
 def copy_result_file(last_subdir):
     result_folder = os.path.abspath(settings.result_subfolder)
     if not os.path.exists(result_folder):
-        logging.debug(("Result-subfolder '{}' does not exist. Creating it.").format(result_folder))
+        logger.debug(("Result-subfolder '{}' does not exist. Creating it.").format(result_folder))
         os.makedirs(result_folder)
 
     # Copy html files from last subdir to results folder
@@ -382,17 +376,17 @@ def copy_result_file(last_subdir):
                 if file.endswith(".html") or file.endswith(".json"):
                     src = os.path.join(last_subdir, file)
                     dest = os.path.join(result_folder, file)
-                    logging.debug(f'Moving file: {src} to {dest}')
+                    logger.debug(f'Moving file: {src} to {dest}')
                     shutil.move(src, dest)
                     found_html = True
                     if file.endswith(".json"):
                         print_best(os.path.join(result_folder, file))
     if not found_html:
-        logging.warning(f'Could not copy html result file, since there was no file found in "{last_subdir}".')
+        logger.warning(f'Could not copy html result file, since there was no file found in "{last_subdir}".')
 
 
 def cleanup():
-    logging.debug('Cleaning up')
+    logger.debug('Cleaning up')
     subdirs = [get_subdir(stage) for stage in range(1, num_stages + 1)]
     copy_result_file(subdirs[-1])
     for subdir in subdirs:
@@ -406,11 +400,11 @@ def validateSettings(args):
         if not os.path.exists(os.path.expanduser(settings.simc_path)):
             raise FileNotFoundError(f'Simc executable at "{settings.simc_path}" does not exist.')
         else:
-            logging.debug(f'Simc executable at "{settings.simc_path}" does not exist.')
+            logger.debug(f'Simc executable at "{settings.simc_path}" does not exist.')
 
     # use a "safe mode", overwriting the values
     if settings.simc_safe_mode:
-        logging.info('Using Safe Mode as specified in settings.')
+        logger.info('Using Safe Mode as specified in settings.')
         settings.simc_threads = 1
 
     if settings.default_error_rate_multiplier <= 0:
@@ -449,7 +443,7 @@ def permutate_talents(talents_list):
                 # Do not permutate the talent row, just add the talent from the profile
                 current_talents.append([talent])
         all_talent_combinations.append(current_talents)
-        logging.debug(f'Talent combination input: {current_talents}')
+        logger.debug(f'Talent combination input: {current_talents}')
 
     # Use some itertools magic to unpack the product of all talent combinations
     product = [itertools.product(*t) for t in all_talent_combinations]
@@ -458,7 +452,7 @@ def permutate_talents(talents_list):
     # Format each permutation back to a nice talent string.
     permuted_talent_strings = ["".join(s) for s in product]
     permuted_talent_strings = stable_unique(permuted_talent_strings)
-    logging.debug(f'Talent combinations: {permuted_talent_strings}')
+    logger.debug(f'Talent combinations: {permuted_talent_strings}')
     return permuted_talent_strings
 
 
@@ -483,17 +477,17 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
         if isinstance(remaining_time, datetime.timedelta):
             remaining_time = chop_microseconds(remaining_time)
         valid_pct = 100.0 * valid_profiles / current if current else 0.0
-        logging.info("Processed {}/{} ({:5.2f}%) valid {} ({:5.2f}%) elapsed_time {} "
-                     "remaining {} bw {:.0f}k/s bw(valid) {:.0f}k/s"
-                     .format(str(current).rjust(max_profile_chars),
-                             maximum,
-                             pct,
-                             valid_profiles,
-                             valid_pct,
-                             elapsed,
-                             remaining_time,
-                             bandwith,
-                             bandwith_valid))
+        logger.info("Processed {}/{} ({:5.2f}%) valid {} ({:5.2f}%) elapsed_time {} "
+                    "remaining {} bw {:.0f}k/s bw(valid) {:.0f}k/s"
+                    .format(str(current).rjust(max_profile_chars),
+                            maximum,
+                            pct,
+                            valid_profiles,
+                            valid_pct,
+                            elapsed,
+                            remaining_time,
+                            bandwith,
+                            bandwith_valid))
 
 
 class Profile:
@@ -515,7 +509,7 @@ class PermutationData:
             gems_on_gear += gear.gem_ids
             gear_with_gems[slot] = len(gear.gem_ids)
 
-        logging.debug(f'gems on gear: {gems_on_gear}')
+        logger.debug(f'gems on gear: {gems_on_gear}')
         if len(gems_on_gear) == 0:
             return
 
@@ -523,9 +517,9 @@ class PermutationData:
         combined_gem_list = gems_on_gear
         combined_gem_list += gem_list
         combined_gem_list = stable_unique(combined_gem_list)
-        logging.debug(f'Combined gem list: {combined_gem_list}')
+        logger.debug(f'Combined gem list: {combined_gem_list}')
         new_gems = get_gem_combinations(combined_gem_list, len(gems_on_gear))
-        logging.debug(f'New Gems: {new_gems}')
+        logger.debug(f'New Gems: {new_gems}')
         new_combinations = []
         for gems in new_gems:
             new_items = copy.deepcopy(items)
@@ -536,12 +530,12 @@ class PermutationData:
                 new_items[slot] = copied_item
                 gems_used += num_gem_slots
             new_combinations.append(new_items)
-            logging.debug('Gem permutations:')
+            logger.debug('Gem permutations:')
             for i, comb in enumerate(new_combinations):
-                logging.debug(f'Combination {i}')
+                logger.debug(f'Combination {i}')
                 for slot, item in comb.items():
-                    logging.debug(f'{slot}: {item}')
-                logging.debug('')
+                    logger.debug(f'{slot}: {item}')
+                logger.debug('')
         return new_combinations
 
     def update_talents(self, talents):
@@ -655,19 +649,16 @@ def build_profile_simc_addon(args):
     except UnicodeDecodeError as e:
         raise RuntimeError("""AutoSimC could not decode your input file '{file}' with encoding '{enc}'.
         Please make sure that your text editor encodes the file as '{enc}',
-        or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile,
-                                                                                            enc=input_encoding)) from e
+        or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile, enc=input_encoding)) from e
     if c_class != "":
-        player_profile.class_spec = specdata.getClassSpec(
-            c_class, player_profile.simc_options["spec"])
-        player_profile.class_role = specdata.getRole(
-            c_class, player_profile.simc_options["spec"])
+        player_profile.class_spec = specdata.getClassSpec(c_class, player_profile.simc_options["spec"])
+        player_profile.class_role = specdata.getRole(c_class, player_profile.simc_options["spec"])
 
     # Build 'general' profile options which do not permutate once into a simc-string
-    logging.info(f'SimC options: {player_profile.simc_options}')
+    logger.info(f'SimC options: {player_profile.simc_options}')
     player_profile.general_options = "\n".join(["{}={}".format(key, value) for key, value in
                                                 player_profile.simc_options.items()])
-    logging.debug(f'Built simc general options string: {player_profile.general_options}')
+    logger.debug(f'Built simc general options string: {player_profile.general_options}')
 
     # Parse gear
     player_profile.simc_options["gear"] = gear
@@ -783,7 +774,7 @@ def product(*iterables):
 
 
 def permutate(args, player_profile):
-    logging.info('Calculating Permutations...')
+    logger.info('Calculating Permutations...')
 
     parsed_gear = collections.OrderedDict({})
 
@@ -814,7 +805,7 @@ def permutate(args, player_profile):
             # We havent found any items for that slot, add empty dummy item
             parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
 
-    logging.debug(f'Parsed gear: {parsed_gear}')
+    logger.debug(f'Parsed gear: {parsed_gear}')
 
     if args.gems is not None:
         splitted_gems = build_gem_list(args.gems)
@@ -851,7 +842,7 @@ def permutate(args, player_profile):
 
     # Calculate normal permutations
     normal_permutations = product(*normal_permutation_options.values())
-    logging.debug('Building permutations matrix finished.')
+    logger.debug('Building permutations matrix finished.')
 
     special_permutations_config = {"finger": ("finger1", "finger2"),
                                    "trinket": ("trinket1", "trinket2")
@@ -868,13 +859,12 @@ def permutate(args, player_profile):
         if len(remove_empty_entries):
             entries = remove_empty_entries
 
-        logging.debug(f'Input list for special permutation "{name}": {entries}')
+        logger.debug(f'Input list for special permutation "{name}": {entries}')
         if args.unique_jewelry:
             # Unique finger/trinkets.
             permutations = itertools.combinations(entries, len(values))
         else:
-            permutations = itertools.combinations_with_replacement(
-                entries, len(values))
+            permutations = itertools.combinations_with_replacement(entries, len(values))
         permutations = list(permutations)
         for i, (item1, item2) in enumerate(permutations):
             new_item1 = copy.deepcopy(item1)
@@ -883,23 +873,22 @@ def permutate(args, player_profile):
             new_item2.slot = values[1]
             permutations[i] = (new_item1, new_item2)
 
-        logging.debug(f'Got {len(permutations)} permutations for {name}.')
+        logger.debug(f'Got {len(permutations)} permutations for {name}.')
         for p in permutations:
-            logging.debug(p)
+            logger.debug(p)
 
         # Remove equal id's
         if args.unique_jewelry:
-            permutations = [
-                p for p in permutations if p[0].item_id != p[1].item_id]
-        logging.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
+            permutations = [p for p in permutations if p[0].item_id != p[1].item_id]
+        logger.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
         for p in permutations:
-            logging.debug(p)
+            logger.debug(p)
 
         # Make unique
         permutations = stable_unique(permutations)
-        logging.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
+        logger.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
         for p in permutations:
-            logging.debug(p)
+            logger.debug(p)
 
         entry_dict = {v: None for v in values}
         special_permutations[name] = [name, entry_dict, permutations]
@@ -925,8 +914,8 @@ def permutate(args, player_profile):
         max_nperm *= gem_perms
         permutations_product["gems"] = gem_perms
     permutations_product["talents"] = len(talent_permutations)
-    logging.info(f'Max number of normal permutations: {max_nperm}')
-    logging.info(f'Number of permutations: {permutations_product}')
+    logger.info(f'Max number of normal permutations: {max_nperm}')
+    logger.info(f'Number of permutations: {permutations_product}')
     max_profile_chars = len(str(max_nperm))  # String length of max_nperm
 
     # Get Additional options string
@@ -967,18 +956,18 @@ def permutate(args, player_profile):
                     print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
 
     result = (f'Finished permutations. Valid: {valid_profiles:n} of {processed:n} processed. ({100.0 * valid_profiles / max_nperm if max_nperm else 0.0:.2f}%)')
-    logging.info(result)
+    logger.info(result)
 
     # Not usable histogram debug output
     unusable_string = []
     for key, value in unusable_histogram.items():
         unusable_string.append(f'{key:40s}: {value:12b} ({value * 100.0 / max_nperm if max_nperm else 0.0:5.2f}%)')
     if len(unusable_string) > 0:
-        logging.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
+        logger.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
 
     # Print checksum so we can check for equality when making changes in the code
     outfile_checksum = file_checksum(args.outputfile)
-    logging.info(f'Output file checksum: {outfile_checksum}')
+    logger.info(f'Output file checksum: {outfile_checksum}')
 
     return valid_profiles
 
@@ -1000,8 +989,8 @@ def checkResultFiles(subdir):
         if os.stat(file).st_size <= 0:
             raise RuntimeError(f'Result file "{file}"" is empty.')
 
-    logging.debug(f'{len(files)} valid result files found in {subdir}.')
-    logging.info('Checked all files in {subdir} : Everything seems to be alright.')
+    logger.debug(f'{len(files)} valid result files found in {subdir}.')
+    logger.info(f'Checked all files in {subdir} : Everything seems to be alright.')
 
 
 def get_subdir(stage):
@@ -1015,8 +1004,7 @@ def grab_profiles(player_profile, stage):
     """Parse output/result files from previous stage and get number of profiles to simulate"""
     subdir_previous_stage = get_subdir(stage - 1)
     if stage == 1:
-        num_generated_profiles = splitter.split(outputFileName, get_subdir(stage),
-                                                settings.splitting_size, player_profile.wow_class)
+        num_generated_profiles = splitter.split(outputFileName, get_subdir(stage), settings.splitting_size, player_profile.wow_class)
     else:
         try:
             checkResultFiles(subdir_previous_stage)
@@ -1032,7 +1020,7 @@ def grab_profiles(player_profile, stage):
         is_last_stage = (stage == num_stages)
         num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), outputFileName, not is_last_stage)
     if num_generated_profiles:
-        logging.info(f'Found {num_generated_profiles} profile(s) to simulate.')
+        logger.info(f'Found {num_generated_profiles} profile(s) to simulate.')
     return num_generated_profiles
 
 
@@ -1048,16 +1036,12 @@ def check_profiles(stage):
     return len(files)
 
 
-def prepare_profiles(player_profile, stage):
-    return grab_profiles(player_profile, stage)
-
-
 def static_stage(player_profile, stage):
     if stage > num_stages:
         return
-    logging.info('----------------------------------------------------')
-    logging.info(f'***Entering static mode, STAGE {stage}***')
-    num_generated_profiles = prepare_profiles(player_profile, stage)
+    logger.info('----------------------------------------------------')
+    logger.info(f'***Entering static mode, STAGE {stage}***')
+    num_generated_profiles = grab_profiles(player_profile, stage)
     is_last_stage = (stage == num_stages)
     try:
         num_iterations = settings.default_iterations[stage]
@@ -1072,10 +1056,10 @@ def static_stage(player_profile, stage):
 def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=None, stage=1):
     if stage > num_stages:
         return
-    logging.info('----------------------------------------------------')
-    logging.info(f"Entering dynamic mode, STAGE {stage}")
+    logger.info('----------------------------------------------------')
+    logger.info(f"Entering dynamic mode, STAGE {stage}")
 
-    num_generated_profiles = prepare_profiles(player_profile, stage)
+    num_generated_profiles = grab_profiles(player_profile, stage)
 
     try:
         target_error = float(settings.default_target_error[stage])
@@ -1089,16 +1073,16 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     # if the user chose a target_error which is higher than one chosen in the previous stage
     # he is given an option to adjust it.
     if previous_target_error is not None and previous_target_error <= target_error:
-        logging.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
+        logger.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
     is_last_stage = (stage == num_stages)
     splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, num_generated_profiles, scale)
     dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
 
 
 def start_stage(player_profile, num_generated_profiles, stage):
-    logging.info('----------------------------------------------------')
-    logging.info(f'Starting at stage {stage}')
-    logging.info(f'You selected grabbing method "{settings.default_grabbing_method}".')
+    logger.info('----------------------------------------------------')
+    logger.info(f'Starting at stage {stage}')
+    logger.info(f'You selected grabbing method "{settings.default_grabbing_method}".')
     mode_choice = int(settings.auto_choose_static_or_dynamic)
     valid_modes = (1, 2)
     if mode_choice not in valid_modes:
@@ -1131,7 +1115,7 @@ def check_interpreter():
 def addFightStyle(profile):
     filepath = os.path.join(os.getcwd(), settings.file_fightstyle)
     filepath = os.path.abspath(filepath)
-    logging.debug(("Opening fight types data file at '{}'.").format(filepath))
+    logger.debug(f'Opening fight types data file at "{filepath}".')
     with open(filepath, encoding="utf-8") as file:
         try:
             profile.fightstyle = None
@@ -1142,29 +1126,18 @@ def addFightStyle(profile):
                     if f["name"] == settings.default_fightstyle:
                         profile.fightstyle = f  # add the whole json-object, files will get created later
                 if profile.fightstyle is None:
-                    raise ValueError(("No fightstyle found in .json with name: {}, exiting.").format(settings.default_fightstyle))
+                    raise ValueError(f'No fightstyle found in .json with name: {settings.default_fightstyle}, exiting.')
             else:
-                raise RuntimeError(
-                    ("Did not find entries in fight_style.json."))
+                raise RuntimeError("Did not find entries in fight_style.json.")
         except json.decoder.JSONDecodeError as error:
-            logging.error(f"Error while decoding JSON file: {error})", exc_info=True)
+            logger.error(f"Error while decoding JSON file: {error})", exc_info=True)
             sys.exit(1)
 
     assert profile.fightstyle is not None
-    logging.info(f'Found fightstyle >> >{profile.fightstyle["name"]} << < in {settings.file_fightstyle}')
+    logger.info(f'Found fightstyle >> >{profile.fightstyle["name"]} << < in {settings.file_fightstyle}')
 
     return profile
 
-
-class UntranslatedFileHandler(logging.FileHandler):
-    """File Handler which logs messages untranslated"""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setFormatter(logging.Formatter("%(asctime)-15s %(levelname)s %(message)s"))
-
-    def emit(self, record):
-        logging.FileHandler.emit(self, record)
 
 ########################
 #     Program Start    #
@@ -1174,34 +1147,15 @@ class UntranslatedFileHandler(logging.FileHandler):
 def main():
     global class_spec
 
-    error_handler = UntranslatedFileHandler(settings.errorFileName, encoding="utf-8")
-    error_handler.setLevel(logging.ERROR)
-
-    # Handler to log messages to file
-    log_handler = UntranslatedFileHandler(settings.logFileName, encoding="utf-8")
-    log_handler.setLevel(logging.DEBUG)
-
-    # Handler for logging to stdout
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setLevel(logging.INFO)
-    stdout_handler.setFormatter(logging.Formatter("%(message)s"))
-
-    logging.basicConfig(level=logging.DEBUG, handlers=[error_handler,
-                                                       log_handler,
-                                                       stdout_handler])
-
     # check version of python-interpreter running the script
     check_interpreter()
 
-    logging.info(f'AutoSimC - Supported WoW-Version: {__version__}')
+    logger.info(f'AutoSimC - Supported WoW-Version: {__version__}')
 
     args = handleCommandLine()
-    if args.debug:
-        log_handler.setLevel(logging.DEBUG)
-        stdout_handler.setLevel(logging.DEBUG)
 
-    logging.debug(f'Parsed command line arguments: {args}')
-    logging.debug(f'Parsed settings: {vars(settings)}')
+    logger.debug(f'Parsed command line arguments: {args}')
+    logger.debug(f'Parsed settings: {vars(settings)}')
 
     validateSettings(args)
 
@@ -1213,7 +1167,7 @@ def main():
     if args.sim == 'all' or args.sim is None:
         start = datetime.datetime.now()
         num_generated_profiles = permutate(args, player_profile)
-        logging.debug(f'Permutating took {datetime.datetime.now() - start}.')
+        logger.debug(f'Permutating took {datetime.datetime.now() - start}.')
         outputGenerated = True
     elif args.sim == 'stage1':
         num_generated_profiles = permutate(args, player_profile)
@@ -1226,7 +1180,7 @@ def main():
                                 ' input.txt and settings.py.'))
         if args.sim:
             if num_generated_profiles and num_generated_profiles > 50000:
-                logger.warn('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
+                logger.warning('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
 
     if args.sim:
         player_profile = addFightStyle(player_profile)
@@ -1239,7 +1193,7 @@ def main():
 
         if settings.clean_up:
             cleanup()
-    logging.info('AutoSimC finished correctly.')
+    logger.info('AutoSimC finished correctly.')
 
 
 if __name__ == "__main__":
@@ -1247,5 +1201,5 @@ if __name__ == "__main__":
         main()
         logging.shutdown()
     except Exception as e:
-        logging.error(f'Error: {e}', exc_info=True)
+        logger.error(f'Error: {e}', exc_info=True)
         sys.exit(1)

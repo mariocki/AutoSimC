@@ -8,20 +8,6 @@ class settings():
     # Either use forward slashes, or >>>>SINGLE-BACKSLASH<<<< for subfolders. Do not remove the leading r'
     simc_path = r'C:\Path\To\Simulationcraft\simc.exe'
 
-    # On Windows, AutoSimCor can automatically download the latest nightly version of SimulationCraft for you.
-    # You need 7z command line utility in path to unzip for this to work.
-    auto_download_simc = True
-    # Check if a newer version is available on http://downloads.simulationcraft.org/?C=M;O=D
-    # A valid path to your current simc.exe on disc has to exist, see variable above (simc_path)
-    # It is only checked if auto_download_simc is set to false
-    check_simc_version = True
-
-    # Choose the translation language used for AutoSimC. The string must look like this:
-    # eg. "de" for German language, or "de_CH" for German (Switzerland).
-    # check the "locale" folder for available translations.
-    # Default is auto, selecting the language based on your systems locale settings.
-    localization_language = "auto"
-
     # standard-input
     default_inputFileName = "input.txt"
 
@@ -30,17 +16,6 @@ class settings():
 
     # standard-additional_input
     default_additionalFileName = "additional_input.txt"
-
-    # standard log file
-    logFileName = "logs.txt"
-
-    # standard error file
-    errorFileName = "error.txt"
-
-    # quiet_mode for faster output; console is very slow
-    # default 0; 1 for reduced console-output
-    # No longer used for main.py
-    b_quiet = 0
 
     # Number of profiles to split simulation work into.
     # This means that each SimulationCraft instance will simulate at most this many profiles.
@@ -153,9 +128,6 @@ class settings():
     # Should ptr mode be used for SimC
     simc_ptr = False
 
-    # [[deprecated]] enable_talent_permutation
-    # Use talent character 0 in your input file to permutate a specific talent row
-
     # if simc crashes, try to set this variable to "True"; it will set threads=1 and single_actor_batch=0
     # this might also output slightly different results because of single_actor_batch_now simming the input as whole
     # raid instead of single profiles
@@ -205,7 +177,7 @@ class settings():
     default_fightstyle = "Default_Patchwerk"
 
     # Automatic delete of the temp folders
-    delete_temp_default = False
+    delete_temp_default = True
 
     # automation of grabbing method
     # 1 or 2

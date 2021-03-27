@@ -99,8 +99,6 @@ Python (>=3.5) is required for this to work.
 		  --unique_jewelry UNIQUE_JEWELRY
 								Assume ring and trinkets are unique-equipped, and only
 								a single item id can be equipped. (default: true)
-		  --debug               Write debug information to log file. (default: False)
-		  -quiet                Run quietly. /!\ Not implemented yet (default: False)
 		  --version             show program's version number and exit
 
 		Don't hesitate to go on the SimcMinMax Discord
