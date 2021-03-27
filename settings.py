@@ -73,7 +73,6 @@ class settings():
     # The optimal settings depends on the number of profiles you have on your input side.
     # Default: 3
     # Please not that you must extend 'default_iterations', 'default_target_error' and 'default_top_n'
-    # If you want to use this with a value > 3 with skip_questions.
     # This value can also be change through command line argument --stages.
     num_stages = 3
 
@@ -92,7 +91,6 @@ class settings():
 
     # For static mode, default iterations per stage
     # By default this is 100 for stage1, 1000 for stage2, and so on.
-    # If you do not specify a stage, you will be asked during simulation if skip_questions is False
     default_iterations = {1: 100,
                           2: 1000,
                           3: 10000}
@@ -210,12 +208,7 @@ class settings():
     # ALL OPTIONS BELOW THIS VARIABLE ARE AFFECTED BY THIS SWITCH!!!
     #               YOU HAVE TO KNOW WHAT YOU DO!
     # ----------------------------------------------------------------------
-    skip_questions = False
 
-    # If you set choose_fightstyle to True, a menu pops up before simulation-begin where you can choose the fight to
-    # simulate.
-    # If set it to False, the entry you declare in the json, e.g. "name":"Default_Patchwerk", has to match default_fightstyle
-    choose_fightstyle = False
     default_fightstyle = "Default_Patchwerk"
 
     # Automatic delete of the temp folders
@@ -224,21 +217,3 @@ class settings():
     # automation of grabbing method
     # 1 or 2
     auto_choose_static_or_dynamic = 2
-
-    # ----------------------------------------------------------------------
-    #       ALL OPTIONS BELOW THIS ARE USED FOR THE PROFILE GENERATOR
-    #                   THEY DON'T IMPACT AUTOSIMC
-    # ----------------------------------------------------------------------
-    # Profile generator settings
-    # Tier to generate
-    tier = 21
-    # Apply the stat filter to the tier items. If False, all tier items will be added
-    apply_stat_filter_to_tier = False
-    # filter type (1 : all filter stats have to be present in the item, 2 : one of the stat has to be present)
-    filter_type = 2
-    # Profile used for the profile bas (talents, artifact, ...).
-    # If Empty, it will use the one from autosimc (Use double backslash, like simc path)
-    default_profile_path = ".\\profiles"
-    # Allow the check of previous tier if selected tier is missing for the spec
-    check_previous_tier = True
-    minimum_tier_to_check = 20
