@@ -231,8 +231,7 @@ def parse_command_line_args():
     parser.add_argument('-scale', '--scale',
                         dest="scale",
                         action='store_true',
-                        default=settings.simc_scale_factors_last_stage,
-                        help='Do not run scale calcs.')
+                        help='Run scale calcs.')
 
     return parser.parse_args()
 
@@ -558,7 +557,7 @@ class PermutationData:
             gems_on_gear += gear.gem_ids
             gear_with_gems[slot] = len(gear.gem_ids)
 
-        # logging.debug("gems on gear: {}".format(gems_on_gear))
+        logging.debug(f'gems on gear: {gems_on_gear}')
         if len(gems_on_gear) == 0:
             return
 
@@ -566,9 +565,9 @@ class PermutationData:
         combined_gem_list = gems_on_gear
         combined_gem_list += gem_list
         combined_gem_list = stable_unique(combined_gem_list)
-        # logging.debug("Combined gem list: {}".format(combined_gem_list))
+        logging.debug(f'Combined gem list: {combined_gem_list}')
         new_gems = get_gem_combinations(combined_gem_list, len(gems_on_gear))
-        # logging.debug("New Gems: {}".format(new_gems))
+        logging.debug(f'New Gems: {new_gems}')
         new_combinations = []
         for gems in new_gems:
             new_items = copy.deepcopy(items)
@@ -579,12 +578,12 @@ class PermutationData:
                 new_items[slot] = copied_item
                 gems_used += num_gem_slots
             new_combinations.append(new_items)
-        #         logging.debug("Gem permutations:")
-        #         for i, comb in enumerate(new_combinations):
-        #             logging.debug("Combination {}".format(i))
-        #             for slot, item in comb.items():
-        #                 logging.debug("{}: {}".format(slot, item))
-        #             logging.debug("")
+            logging.debug('Gem permutations:')
+            for i, comb in enumerate(new_combinations):
+                logging.debug(f'Combination {i}')
+                for slot, item in comb.items():
+                    logging.debug(f'{slot}: {item}')
+                logging.debug('')
         return new_combinations
 
     def update_talents(self, talents):
@@ -893,7 +892,7 @@ def product(*iterables):
 
 
 def permutate(args, player_profile):
-    logging.info(("Calculating Permutations..."))
+    logging.info('Calculating Permutations...')
 
     parsed_gear = collections.OrderedDict({})
 
@@ -908,7 +907,7 @@ def permutate(args, player_profile):
                 if b == "finger" or b == "trinket":
                     currentGear = currentGear + "|" + gear[b][1]
                 for foundGear in gearInBags.get(b):
-                    currentGear = currentGear + "|" + foundGear
+                    currentGear = currentGear + '|' + foundGear
                 gear[b] = currentGear
 
     for gear_slot in gear_slots:
@@ -917,14 +916,14 @@ def permutate(args, player_profile):
         for entry in gear_slot:
             if entry in gear:
                 if len(gear[entry]) > 0:
-                    for s in gear[entry].split("|"):
+                    for s in gear[entry].split('|'):
                         parsed_gear[slot_base_name].append(
                             Item(slot_base_name, s))
         if len(parsed_gear[slot_base_name]) == 0:
             # We havent found any items for that slot, add empty dummy item
             parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
 
-    logging.debug(("Parsed gear: {}").format(parsed_gear))
+    logging.debug(f'Parsed gear: {parsed_gear}')
 
     if args.gems is not None:
         splitted_gems = build_gem_list(args.gems)
@@ -938,7 +937,7 @@ def permutate(args, player_profile):
 
     # Add talents to permutations
     # l_talents = player_profile.config['Profile'].get("talents", "")
-    l_talents = player_profile.simc_options.get("talents")
+    l_talents = player_profile.simc_options.get('talents')
     talent_permutations = permutate_talents(l_talents)
 
     # Calculate max number of gem slots in equip. Will be used if we do gem permutations.
@@ -952,13 +951,12 @@ def permutate(args, player_profile):
             max_gem_slots += max_gem_on_item_slot
 
     # Add 'normal' gear to normal permutations, excluding trinket/rings
-    gear_normal = {k: v for k, v in parsed_gear.items() if (
-        not k == "finger" and not k == "trinket")}
+    gear_normal = {k: v for k, v in parsed_gear.items() if (not k == 'finger' and not k == 'trinket')}
     normal_permutation_options.update(gear_normal)
 
     # Calculate normal permutations
     normal_permutations = product(*normal_permutation_options.values())
-    logging.debug(("Building permutations matrix finished."))
+    logging.debug('Building permutations matrix finished.')
 
     special_permutations_config = {"finger": ("finger1", "finger2"),
                                    "trinket": ("trinket1", "trinket2")
@@ -975,8 +973,7 @@ def permutate(args, player_profile):
         if len(remove_empty_entries):
             entries = remove_empty_entries
 
-        logging.debug(("Input list for special permutation '{}': {}").format(name,
-                                                                             entries))
+        logging.debug(f'Input list for special permutation "{name}": {entries}')
         if args.unique_jewelry:
             # Unique finger/trinkets.
             permutations = itertools.combinations(entries, len(values))
@@ -991,8 +988,7 @@ def permutate(args, player_profile):
             new_item2.slot = values[1]
             permutations[i] = (new_item1, new_item2)
 
-        logging.debug(("Got {num} permutations for {item_name}.").format(num=len(permutations),
-                                                                         item_name=name))
+        logging.debug(f'Got {len(permutations)} permutations for {name}.')
         for p in permutations:
             logging.debug(p)
 
@@ -1000,16 +996,13 @@ def permutate(args, player_profile):
         if args.unique_jewelry:
             permutations = [
                 p for p in permutations if p[0].item_id != p[1].item_id]
-            logging.debug(("Got {num} permutations for {item_name} after id filter.")
-                          .format(num=len(permutations),
-                                  item_name=name))
-            for p in permutations:
-                logging.debug(p)
+        logging.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
+        for p in permutations:
+            logging.debug(p)
+
         # Make unique
         permutations = stable_unique(permutations)
-        logging.info(("Got {num} permutations for {item_name} after unique filter.")
-                     .format(num=len(permutations),
-                             item_name=name))
+        logging.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
         for p in permutations:
             logging.debug(p)
 
@@ -1025,6 +1018,7 @@ def permutate(args, player_profile):
                                                                        normal_permutation_options.items()}
                                                                       )
                             }
+
     for name, _entries, opt in special_permutations.values():
         max_nperm *= len(opt)
         permutations_product[name] = len(opt)
@@ -1037,8 +1031,8 @@ def permutate(args, player_profile):
         max_nperm *= gem_perms
         permutations_product["gems"] = gem_perms
     permutations_product["talents"] = len(talent_permutations)
-    logging.info(("Max number of normal permutations: {}").format(max_nperm))
-    logging.info(("Number of permutations: {}").format(permutations_product))
+    logging.info(f'Max number of normal permutations: {max_nperm}')
+    logging.info(f'Number of permutations: {permutations_product}')
     max_profile_chars = len(str(max_nperm))  # String length of max_nperm
 
     # Get Additional options string
@@ -1059,14 +1053,12 @@ def permutate(args, player_profile):
                     entries += perm_finger
                     entries += perm_trinket
                     items = {e.slot: e for e in entries if type(e) is Item}
-                    data = PermutationData(
-                        items, player_profile, max_profile_chars)
+                    data = PermutationData(items, player_profile, max_profile_chars)
                     is_unusable_before_talents = data.check_usable_before_talents()
                     if not is_unusable_before_talents:
                         # add gem-permutations to gear
                         if args.gems is not None:
-                            gem_permutations = data.permutate_gems(
-                                items, splitted_gems)
+                            gem_permutations = data.permutate_gems(items, splitted_gems)
                         else:
                             gem_permutations = (items,)
                         for gem_permutation in gem_permutations:
@@ -1075,37 +1067,30 @@ def permutate(args, player_profile):
                             for t in talent_permutations:
                                 data.update_talents(t)
                                 # Additional talent usable check could be inserted here.
-                                data.write_to_file(
-                                    output_file, valid_profiles, additional_options)
+                                data.write_to_file(output_file, valid_profiles, additional_options)
                                 valid_profiles += 1
                                 processed += 1
                     else:
                         processed += len(talent_permutations) * gem_perms
                         if is_unusable_before_talents not in unusable_histogram:
                             unusable_histogram[is_unusable_before_talents] = 0
-                        unusable_histogram[is_unusable_before_talents] += len(
-                            talent_permutations) * gem_perms
+                        unusable_histogram[is_unusable_before_talents] += len(talent_permutations) * gem_perms
                     progress += 1
-                    print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars,
-                                               progress, max_progress)
+                    print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
 
-    result = ("Finished permutations. Valid: {:n} of {:n} processed. ({:.2f}%)"). \
-        format(valid_profiles,
-               processed,
-               100.0 * valid_profiles / max_nperm if max_nperm else 0.0)
+    result = (f'Finished permutations. Valid: {valid_profiles:n} of {processed:n} processed. ({100.0 * valid_profiles / max_nperm if max_nperm else 0.0:.2f}%)')
     logging.info(result)
 
     # Not usable histogram debug output
     unusable_string = []
     for key, value in unusable_histogram.items():
-        unusable_string.append("{:40s}: {:12b} ({:5.2f}%)".
-                               format(key, value, value * 100.0 / max_nperm if max_nperm else 0.0))
+        unusable_string.append(f'{key:40s}: {value:12b} ({value * 100.0 / max_nperm if max_nperm else 0.0:5.2f}%)')
     if len(unusable_string) > 0:
-        logging.info(("Invalid profile statistics: [\n{}]").format("\n".join(unusable_string)))
+        logging.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
 
     # Print checksum so we can check for equality when making changes in the code
     outfile_checksum = file_checksum(args.outputfile)
-    logging.info(("Output file checksum: {}").format(outfile_checksum))
+    logging.info(f'Output file checksum: {outfile_checksum}')
 
     return valid_profiles
 
@@ -1287,11 +1272,6 @@ def addFightStyle(profile):
     return profile
 
 
-########################
-#     Program Start    #
-########################
-
-
 class UntranslatedFileHandler(logging.FileHandler):
     """File Handler which logs messages untranslated"""
 
@@ -1309,6 +1289,10 @@ class UntranslatedFileHandler(logging.FileHandler):
                 record.msg = orig_msg
         else:
             logging.FileHandler.emit(self, record)
+
+########################
+#     Program Start    #
+########################
 
 
 def main():
@@ -1340,8 +1324,8 @@ def main():
         log_handler.setLevel(logging.DEBUG)
         stdout_handler.setLevel(logging.DEBUG)
 
-    logging.debug(("Parsed command line arguments: {}").format(args))
-    logging.debug(("Parsed settings: {}").format(vars(settings)))
+    logging.debug(f'Parsed command line arguments: {args}')
+    logging.debug(f'Parsed settings: {vars(settings)}')
 
     validateSettings(args)
 
@@ -1350,36 +1334,36 @@ def main():
     # can always be rerun since it is now deterministic
     outputGenerated = False
     num_generated_profiles = None
-    if args.sim == "all" or args.sim is None:
+    if args.sim == 'all' or args.sim is None:
         start = datetime.datetime.now()
         num_generated_profiles = permutate(args, player_profile)
-        logging.debug(("Permutating took {}.").format(datetime.datetime.now() - start))
+        logging.debug(f'Permutating took {datetime.datetime.now() - start}.')
         outputGenerated = True
-    elif args.sim == "stage1":
+    elif args.sim == 'stage1':
         num_generated_profiles = permutate(args, player_profile)
         outputGenerated = True
 
     if outputGenerated:
         if num_generated_profiles == 0:
-            raise RuntimeError(("No valid profile combinations found."
-                                " Please check the 'Invalid profile statistics' output and adjust your"
-                                " input.txt and settings.py."))
+            raise RuntimeError(('No valid profile combinations found.'
+                                ' Please check the "Invalid profile statistics" output and adjust your'
+                                ' input.txt and settings.py.'))
         if args.sim:
             if num_generated_profiles and num_generated_profiles > 50000:
-                logger.warn(("Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!"))
+                logger.warn('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
 
     if args.sim:
         player_profile = addFightStyle(player_profile)
-        if args.sim == "stage1" or args.sim == "all":
+        if args.sim == 'stage1' or args.sim == 'all':
             start_stage(player_profile, num_generated_profiles, 1)
-        if args.sim == "stage2":
+        if args.sim == 'stage2':
             start_stage(player_profile, None, 2)
-        if args.sim == "stage3":
+        if args.sim == 'stage3':
             start_stage(player_profile, None, 3)
 
         if settings.clean_up:
             cleanup()
-    logging.info(("AutoSimC finished correctly."))
+    logging.info('AutoSimC finished correctly.')
 
 
 if __name__ == "__main__":
