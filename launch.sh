@@ -26,7 +26,7 @@ download_and_compile_simc() {
 }
 
 # prompt for installation.
-download_and_compile_simc
+#download_and_compile_simc
 
 echo "Running AutoSimC"
 cd $auto_simc_pwd

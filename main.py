@@ -497,23 +497,31 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
 
 class Profile:
     """Represent global profile data"""
-    args = None
-    simc_options = ''
-    wow_class = ''
-    profile_name = ''
-    class_spec = ''
-    class_role = ''
-    general_options = ''
+
+    def __init__(self):
+        self.args = None
+        self.simc_options = ''
+        self.wow_class = ''
+        self.profile_name = ''
+        self.class_spec = ''
+        self.class_role = ''
+        self.general_options = ''
+
+    def __str__(self):
+        return f'{{"args": "{self.args}", "simc_options": {self.simc_options}, "wow_class": "{self.wow_class}", "profile_name": "{self.profile_name}", "class_spec": "{self.class_spec}", "class_role": "{self.class_role}", "general_options": "{self.general_options}"}}'
+
+    def __repr__(self):
+        return f'{{"args": "{self.args}", "simc_options": {self.simc_options}, "wow_class": "{self.wow_class}", "profile_name": "{self.profile_name}", "class_spec": "{self.class_spec}", "class_role": "{self.class_role}", "general_options": "{self.general_options}"}}'
 
 
 class PermutationData:
     """Data for each permutation"""
-    talents = ''
 
     def __init__(self, items, profile, max_profile_chars):
         self.profile = profile
         self.max_profile_chars = max_profile_chars
         self.items = items
+        self.talents = ''
 
     def permutate_gems(self, items, gem_list):
         gems_on_gear = []
@@ -671,7 +679,7 @@ def build_profile_simc_addon(args):
     # Build 'general' profile options which do not permutate once into a simc-string
     logger.info(f'SimC options: {player_profile.simc_options}')
     player_profile.general_options = "\n".join(["{}={}".format(key, value) for key, value in
-                                                player_profile.simc_options.items()])
+                                               player_profile.simc_options.items()])
     logger.debug(f'Built simc general options string: {player_profile.general_options}')
 
     # Parse gear

@@ -262,7 +262,7 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
 def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stage, scale):
     """Start the simulation process for a given stage/input"""
     logger.info('Starting simulation.')
-    logger.debug(f'Started simulation with {locals}')
+    logger.debug(f'Started simulation with {locals()}')
     subdir = os.path.join(os.getcwd(), subdir)
     files = os.listdir(subdir)
     files = [f for f in files if not f.endswith('.result')]
