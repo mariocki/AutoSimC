@@ -74,19 +74,19 @@ def split(inputfile, destination_folder, size, wow_class):
     _purge_subfolder(destination_folder)
     with open(inputfile, encoding='utf-8', mode="r") as src:
         for profile in _parse_profiles_from_file(src, wow_class):
-            profile.append("")  # Add tailing empty line
+            profile.append('')  # Add tailing empty line
             bestprofiles.append("\n".join(profile))
             if len(bestprofiles) >= size:
                 outfile = os.path.join(
-                    destination_folder, "sim" + str(outfile_count) + ".simc")
+                    destination_folder, 'sim' + str(outfile_count) + '.simc')
                 _dump_profiles_to_file(outfile, bestprofiles)
                 num_profiles += len(bestprofiles)
                 bestprofiles.clear()
                 outfile_count += 1
     # Write tail
     if len(bestprofiles):
-        outfile = os.path.join(destination_folder, "sim" +
-                               str(outfile_count) + ".simc")
+        outfile = os.path.join(destination_folder, 'sim' +
+                               str(outfile_count) + '.simc')
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
         num_profiles += len(bestprofiles)
@@ -139,7 +139,7 @@ def _generate_sim_options(output_file, sim_type, simtype_value, is_last_stage, p
             cmd.append('scale_only=agi,crit,haste,mastery,vers')
         elif player_profile.class_role == "spell":
             cmd.append('scale_only=int,crit,haste,mastery,vers')
-    logger.info("Commandline: {}".format(cmd))
+    logger.info(f'Commandline: {cmd}')
     with open(output_file, "w") as file_pointer:
         file_pointer.write(" ".join(cmd))
 
@@ -187,11 +187,11 @@ def _launch_simc_commands(commands, is_last_stage):
         num_workers = 1
     else:
         num_workers = settings.number_of_instances
-    logger.info("-----------------------------------------------------------------")
-    logger.info("Starting multi-process simulation.")
-    logger.info("Number of work items: {}.".format(len(commands)))
-    logger.info("Number of worker instances: {}.".format(num_workers))
-    logger.debug("Starting simc with commands={}".format(commands))
+    logger.info('-----------------------------------------------------------------')
+    logger.info('Starting multi-process simulation.')
+    logger.info(f'Number of work items: {len(commands)}')
+    logger.info(f'Number of worker instances: {num_workers}')
+    logger.debug(f'Starting simc with commands={commands}')
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = {executor.submit(_worker, command, idx, len(commands), starttime, num_workers): (
@@ -320,11 +320,11 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     files = os.listdir(source_subdir)
     files = [f for f in files if f.endswith(".result")]
     files = [os.path.join(source_subdir, f) for f in files]
-    logger.debug("Grabbing files: {}".format(files))
+    logger.debug(f'Grabbing files: {files}')
 
     start = datetime.datetime.now()
     metric = settings.select_by_metric
-    logger.info("Selecting by metric: '{}'.".format(metric))
+    logger.info(f'Selecting by metric: "{metric}"')
     metric_regex = re.compile(r"\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
         # if os.stat(file).st_size <= 0:
@@ -333,7 +333,7 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
         with open(file, encoding='utf-8', mode="r") as src:
             current_player = {}
             for line in src:
-                if line.startswith("Player: "):
+                if line.startswith('Player: '):
                     _player, profile_name, _race, wow_class, *_tail = line.split()
                     user_class = wow_class
                     current_player["name"] = profile_name
@@ -350,19 +350,18 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
                 best.append(current_player)
                 current_player = {}
 
-    logger.debug("Parsing input files for {} took: {}".format(
-        metric, datetime.datetime.now() - start))
+    logger.debug(f'Parsing input files for {metric} took: {datetime.datetime.now() - start}')
 
     # sort best metric, descending order
     best = list(reversed(sorted(best, key=lambda entry: entry["metric"])))
-    logger.debug(f'Result from parsing {metric} with metric "{metric}" len={len(best)}')
+    logger.debug(f'Result from parsing {metric} with metric "{metric}" is {len(best)}')
 
-    if filter_by == "target_error":
+    if filter_by == 'target_error':
         filterd_best = _filter_by_target_error(best)
-    elif filter_by == "count":
+    elif filter_by == 'count':
         filterd_best = _filter_by_length(best, filter_criterium)
     else:
-        raise ValueError("Invalid filter")
+        raise ValueError('Invalid filter')
 
     logger.debug(f'Filtered metric results len={len(filterd_best)}')
     for entry in filterd_best:
@@ -386,33 +385,33 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
         chunk_length = 1
     if chunk_length > int(settings.splitting_size):
         chunk_length = int(settings.splitting_size)
-    logger.debug("Chunk length: {}".format(chunk_length))
+    logger.debug(f'Chunk length: {chunk_length}')
 
     if not os.path.exists(target_subdir):
         os.makedirs(target_subdir)
 
     # now parse our "database" and extract the profiles of our top n
-    logger.debug("Getting sim input from file {}.".format(origin))
+    logger.debug(f'Getting sim input from file {origin}.')
     with open(origin, "r") as source:
         subfolder = target_subdir
         _purge_subfolder(subfolder)
         for profile in _parse_profiles_from_file(source, user_class):
-            _classname, profilename = profile[0].split("=")
+            _classname, profilename = profile[0].split('=')
             if profilename in sortednames:
-                profile.append("")  # Add tailing empty line
+                profile.append('')  # Add tailing empty line
                 bestprofiles.append("\n".join(profile))
                 num_profiles += 1
                 logger.debug("Added {} to best list.".format(profilename))
                 # If we reached chunk length, dump collected profiles and reset, so we do not store everything in memory
                 if len(bestprofiles) >= chunk_length:
-                    outfile = os.path.join(target_subdir, "best" + str(outfile_count) + ".simc")
+                    outfile = os.path.join(target_subdir, 'best' + str(outfile_count) + '.simc')
                     _dump_profiles_to_file(outfile, bestprofiles)
                     bestprofiles.clear()
                     outfile_count += 1
 
     # Write tail
     if len(bestprofiles):
-        outfile = os.path.join(target_subdir, "best" + str(outfile_count) + ".simc")
+        outfile = os.path.join(target_subdir, 'best' + str(outfile_count) + '.simc')
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
 
