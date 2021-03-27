@@ -52,7 +52,7 @@ gem_ids = {"16haste": 311865,
 
 # Global logger instance
 logger = logging.getLogger()
-if (logger.hasHandlers()):
+if logger.hasHandlers():
     logger.handlers.clear()
 logger.setLevel(logging.DEBUG)
 
@@ -84,16 +84,16 @@ def get_additional_input():
     input_encoding = 'utf-8'
     options = []
     try:
-        with open(additionalFileName, "r", encoding=input_encoding) as f:
-            for line in f:
+        with open(ADDITIONAL_FILENAME, "r", encoding=input_encoding) as file_pointer:
+            for line in file_pointer:
                 if not line.startswith("#"):
                     options.append(line)
 
-    except UnicodeDecodeError as e:
+    except UnicodeDecodeError as ex:
         raise RuntimeError("""AutoSimC could not decode your additional input file '{file}' with encoding '{enc}'.
         Please make sure that your text editor encodes the file as '{enc}',
-        or as a quick fix remove any special characters from your character name.""".format(file=additionalFileName,
-                                                                                            enc=input_encoding)) from e
+        or as a quick fix remove any special characters from your character name.""".format(file=ADDITIONAL_FILENAME,
+                                                                                            enc=input_encoding)) from ex
 
     return "".join(options)
 
@@ -116,8 +116,8 @@ def build_gem_list(gem_lists):
     return sorted_gem_list
 
 
-def str2bool(v):
-    return v.lower() in ('yes', 'true', 't', '1', 'y')
+def str2bool(value):
+    return value.lower() in ('yes', 'true', 't', '1', 'y')
 
 
 def parse_command_line_args():
@@ -224,7 +224,7 @@ def parse_command_line_args():
 
 
 # Manage command line parameters
-def handleCommandLine():
+def handle_command_line():
     args = parse_command_line_args()
 
     # Sim stage is always a list with 1 element, eg. ["all"], ['stage1'], ...
@@ -233,17 +233,17 @@ def handleCommandLine():
         args.sim = None
 
     # For now, just write command line arguments into globals
-    global outputFileName
-    outputFileName = args.outputfile
+    global OUTPUT_FILENAME
+    OUTPUT_FILENAME = args.outputfile
 
-    global additionalFileName
-    additionalFileName = args.additionalfile
+    global ADDITIONAL_FILENAME
+    ADDITIONAL_FILENAME = args.additionalfile
 
-    global num_stages
-    num_stages = args.stages
+    global NUM_STAGES
+    NUM_STAGES = args.stages
 
-    global scale
-    scale = args.scale
+    global SCALE
+    SCALE = args.scale
 
     return args
 
@@ -254,25 +254,25 @@ def cleanup_subdir(subdir):
         shutil.rmtree(subdir)
 
 
-def fetch_from_wowhead(dict, ilvl):
+def fetch_from_wowhead(item_details, ilvl):
     if not os.path.exists("cache"):
         os.makedirs("cache")
 
-    filename = f'cache/{dict["id"]}.json'
+    filename = f'cache/{item_details["id"]}.json'
     if os.path.isfile(filename):
-        with open(filename, "r") as f:
-            json_string = f.read()
+        with open(filename, "r") as file_pointer:
+            json_string = file_pointer.read()
         return json_string
 
     try:
         hdr = {'Accept': 'text/html,application/xhtml+xml,*/*',
                "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"}
-        url = f'https://www.wowhead.com/item={dict["id"]}&xml'
-        if "bonus_id" in dict:
-            bonus_id = dict["bonus_id"].replace('/', ':')
+        url = f'https://www.wowhead.com/item={item_details["id"]}&xml'
+        if "bonus_id" in item_details:
+            bonus_id = item_details["bonus_id"].replace('/', ':')
             url = url + f'&bonus={bonus_id}'
-        if "enchant_id" in dict:
-            url = url + f'&ench={dict["enchant_id"]}'
+        if "enchant_id" in item_details:
+            url = url + f'&ench={item_details["enchant_id"]}'
         if ilvl != 0:
             url = url + f'&ilvl={ilvl}'
 
@@ -285,8 +285,8 @@ def fetch_from_wowhead(dict, ilvl):
         item_json["quality"] = int(root.find('item/quality').attrib["id"])
         item_json["level"] = int(root.find('item/level').text)
         json_string = json.dumps(item_json)
-        with open(filename, "w") as f:
-            f.write(json_string)
+        with open(filename, "w") as file_pointer:
+            file_pointer.write(json_string)
         return json_string
     except URLError as ex:
         logger.warning(f'Could not access download from wowhead {ex.reason}')
@@ -324,28 +324,28 @@ stat_names = {
 
 
 def print_best(filename):
-    with open(filename) as f:
-        results = json.load(f)
-    currentBestDps = 0
-    currentBestIndex = ""
+    with open(filename) as file_pointer:
+        results = json.load(file_pointer)
+    current_best_dps = 0
+    current_best_index = ""
 
     for player in results["sim"]["players"]:
-        if player["collected_data"]["dpse"]["mean"] > currentBestDps:
-            currentBestDps = player["collected_data"]["dpse"]["mean"]
-            currentBestIndex = player["name"]
+        if player["collected_data"]["dpse"]["mean"] > current_best_dps:
+            current_best_dps = player["collected_data"]["dpse"]["mean"]
+            current_best_index = player["name"]
 
-    print(colored(currentBestIndex.upper().split('_')[0], 'green'), colored(f'{currentBestDps:8.0f}', 'red'))
+    print(colored(current_best_index.upper().split('_')[0], 'green'), colored(f'{current_best_dps:8.0f}', 'red'))
 
     for player in results["sim"]["players"]:
-        if player["name"] == currentBestIndex:
+        if player["name"] == current_best_index:
             # print out the gear
             for slot, item in player["gear"].items():
-                d = dict(x.split("=") for x in ('name=' + item["encoded_item"]).split(','))
+                item_details = dict(x.split("=") for x in ('name=' + item["encoded_item"]).split(','))
 
-                json_string = fetch_from_wowhead(d, item["ilevel"])
+                json_string = fetch_from_wowhead(item_details, item["ilevel"])
                 item_json = json.loads(json_string)
 
-                print(f'{slot.ljust(11).title()} {item_colors[item_json["quality"]](d["name"])}', colored(f'[{item["ilevel"]}]', 'white'))
+                print(f'{slot.ljust(11).title()} {item_colors[item_json["quality"]](item["name"])}', colored(f'[{item["ilevel"]}]', 'white'))
 
             if "scale_factors" in player and len(player["scale_factors"]) > 0:
                 # print out the Pawn string
@@ -387,13 +387,13 @@ def copy_result_file(last_subdir):
 
 def cleanup():
     logger.debug('Cleaning up')
-    subdirs = [get_subdir(stage) for stage in range(1, num_stages + 1)]
+    subdirs = [get_subdir(stage) for stage in range(1, NUM_STAGES + 1)]
     copy_result_file(subdirs[-1])
     for subdir in subdirs:
         cleanup_subdir(subdir)
 
 
-def validateSettings(args):
+def validate_settings(args):
     """Check input arguments and settings.py options"""
     # Check simc executable availability.
     if args.sim:
@@ -416,11 +416,11 @@ def validateSettings(args):
 
 
 def file_checksum(filename):
-    h = hashlib.sha256()
-    with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    sha256_hasher = hashlib.sha256()
+    with open(filename, "rb") as file_pointer:
+        for chunk in iter(lambda: file_pointer.read(4096), b""):
+            sha256_hasher.update(chunk)
+    return sha256_hasher.hexdigest()
 
 
 def get_gem_combinations(gems_to_use, num_gem_slots):
@@ -492,10 +492,18 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
 
 class Profile:
     """Represent global profile data"""
+    args = None
+    simc_options = ''
+    wow_class = ''
+    profile_name = ''
+    class_spec = ''
+    class_role = ''
+    general_options = ''
 
 
 class PermutationData:
     """Data for each permutation"""
+    talents = ''
 
     def __init__(self, items, profile, max_profile_chars):
         self.profile = profile
@@ -599,19 +607,19 @@ def build_profile_simc_addon(args):
     gear = {}
     for slot in gear_slots:
         gear[slot[0]] = []
-    gearInBags = {}
+    gear_in_bags = {}
     for slot in gear_slots:
-        gearInBags[slot[0]] = []
+        gear_in_bags[slot[0]] = []
 
     # no sections available, so parse each line individually
     input_encoding = 'utf-8'
     c_class = ""
     try:
-        with open(args.inputfile, "r", encoding=input_encoding) as f:
+        with open(args.inputfile, "r", encoding=input_encoding) as file_pointer:
             player_profile = Profile()
             player_profile.args = args
             player_profile.simc_options = {}
-            for line in f:
+            for line in file_pointer:
                 if line == '\n':
                     continue
                 if line.startswith('#'):
@@ -622,35 +630,36 @@ def build_profile_simc_addon(args):
                         continue
                     else:
                         # gear-in-bag handling
-                        splittedLine = line.replace('#', '').replace('\n', '').lstrip().rstrip().split('=', 1)
+                        split_line = line.replace('#', '').replace('\n', '').lstrip().rstrip().split('=', 1)
                         for gearslot in gear_slots:
-                            if splittedLine[0].replace('\n', '') == gearslot[0]:
-                                gearInBags[splittedLine[0].replace('\n', '')].append(splittedLine[1].replace('\n', '').lstrip().rstrip())
+                            if split_line[0].replace('\n', '') == gearslot[0]:
+                                gear_in_bags[split_line[0].replace('\n', '')].append(split_line[1].replace('\n', '').lstrip().rstrip())
                             # trinket and finger-handling
-                            trinketOrRing = splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')
-                            if (trinketOrRing == 'finger' or trinketOrRing == 'trinket') and trinketOrRing == gearslot[0]:
-                                gearInBags[splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')].append(splittedLine[1].lstrip().rstrip())
+                            trinket_or_ring = split_line[0].replace('\n', '').replace('1', '').replace('2', '')
+                            if (trinket_or_ring == 'finger' or trinket_or_ring == 'trinket') and trinket_or_ring == gearslot[0]:
+                                gear_in_bags[split_line[0].replace('\n', '').replace('1', '').replace('2', '')].append(split_line[1].lstrip().rstrip())
                 else:
-                    splittedLine = line.split("=", 1)
-                    if splittedLine[0].replace('\n', '') in valid_classes:
-                        c_class = splittedLine[0].replace('\n', '').lstrip().rstrip()
+                    split_line = line.split("=", 1)
+                    if split_line[0].replace('\n', '') in valid_classes:
+                        c_class = split_line[0].replace('\n', '').lstrip().rstrip()
                         player_profile.wow_class = c_class
-                        player_profile.profile_name = splittedLine[1].replace('\n', '').lstrip().rstrip()
-                    if splittedLine[0].replace('\n', '') in simc_profile_options:
-                        player_profile.simc_options[splittedLine[0].replace('\n', '')] = splittedLine[1].replace('\n', '').lstrip().rstrip()
+                        player_profile.profile_name = split_line[1].replace('\n', '').lstrip().rstrip()
+                    if split_line[0].replace('\n', '') in simc_profile_options:
+                        player_profile.simc_options[split_line[0].replace('\n', '')] = split_line[1].replace('\n', '').lstrip().rstrip()
                     for gearslot in gear_slots:
-                        if splittedLine[0].replace('\n', '') == gearslot[0]:
-                            gear[splittedLine[0].replace('\n', '')].append(splittedLine[1].replace('\n', '').lstrip().rstrip())
+                        if split_line[0].replace('\n', '') == gearslot[0]:
+                            gear[split_line[0].replace('\n', '')].append(split_line[1].replace('\n', '').lstrip().rstrip())
                         # trinket and finger-handling
-                        trinketOrRing = splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')
-                        if (trinketOrRing == "finger" or trinketOrRing == "trinket") and trinketOrRing == gearslot[0]:
-                            gear[splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')].append(splittedLine[1].lstrip().rstrip())
+                        trinket_or_ring = split_line[0].replace('\n', '').replace('1', '').replace('2', '')
+                        if (trinket_or_ring == 'finger' or trinket_or_ring == 'trinket') and trinket_or_ring == gearslot[0]:
+                            gear[split_line[0].replace('\n', '').replace('1', '').replace('2', '')].append(split_line[1].lstrip().rstrip())
 
-    except UnicodeDecodeError as e:
+    except UnicodeDecodeError as ex:
         raise RuntimeError("""AutoSimC could not decode your input file '{file}' with encoding '{enc}'.
         Please make sure that your text editor encodes the file as '{enc}',
-        or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile, enc=input_encoding)) from e
-    if c_class != "":
+        or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile, enc=input_encoding)) from ex
+
+    if c_class != '':
         player_profile.class_spec = specdata.getClassSpec(c_class, player_profile.simc_options["spec"])
         player_profile.class_role = specdata.getRole(c_class, player_profile.simc_options["spec"])
 
@@ -662,7 +671,7 @@ def build_profile_simc_addon(args):
 
     # Parse gear
     player_profile.simc_options["gear"] = gear
-    player_profile.simc_options["gearInBag"] = gearInBags
+    player_profile.simc_options["gearInBag"] = gear_in_bags
 
     return player_profile
 
@@ -711,8 +720,8 @@ class Item:
         if len(splitted_name) > 1:
             self.name = splitted_name[1]
 
-        for s in parts[1:]:
-            name, value = s.split("=")
+        for split_text in parts[1:]:
+            name, value = split_text.split("=")
             name = name.lower()
             if name == 'id':
                 self.item_id = int(value)
@@ -767,8 +776,8 @@ def product(*iterables):
     if len(iterables) == 0:
         yield ()
     else:
-        it = iterables[0]
-        for item in iter(it):
+        iterator = iterables[0]
+        for item in iter(iterator):
             for items in product(*iterables[1:]):
                 yield (item,) + items
 
@@ -779,18 +788,18 @@ def permutate(args, player_profile):
     parsed_gear = collections.OrderedDict({})
 
     gear = player_profile.simc_options.get('gear')
-    gearInBags = player_profile.simc_options.get('gearInBag')
+    gear_in_bags = player_profile.simc_options.get('gearInBag')
 
     # concatenate gear in bags to normal gear-list
-    for gear_in_bag in gearInBags:
+    for gear_in_bag in gear_in_bags:
         if gear_in_bag in gear:
             if len(gear[gear_in_bag]) > 0:
-                currentGear = gear[gear_in_bag][0]
+                current_gear = gear[gear_in_bag][0]
                 if gear_in_bag == "finger" or gear_in_bag == "trinket":
-                    currentGear = currentGear + "|" + gear[gear_in_bag][1]
-                for foundGear in gearInBags.get(gear_in_bag):
-                    currentGear = currentGear + '|' + foundGear
-                gear[gear_in_bag] = currentGear
+                    current_gear = current_gear + "|" + gear[gear_in_bag][1]
+                for found_gear in gear_in_bags.get(gear_in_bag):
+                    current_gear = current_gear + '|' + found_gear
+                gear[gear_in_bag] = current_gear
 
     for gear_slot in gear_slots:
         slot_base_name = gear_slot[0]  # First mentioned "correct" item name
@@ -798,9 +807,8 @@ def permutate(args, player_profile):
         for entry in gear_slot:
             if entry in gear:
                 if len(gear[entry]) > 0:
-                    for s in gear[entry].split('|'):
-                        parsed_gear[slot_base_name].append(
-                            Item(slot_base_name, s))
+                    for split_section in gear[entry].split('|'):
+                        parsed_gear[slot_base_name].append(Item(slot_base_name, split_section))
         if len(parsed_gear[slot_base_name]) == 0:
             # We havent found any items for that slot, add empty dummy item
             parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
@@ -874,21 +882,21 @@ def permutate(args, player_profile):
             permutations[i] = (new_item1, new_item2)
 
         logger.debug(f'Got {len(permutations)} permutations for {name}.')
-        for p in permutations:
-            logger.debug(p)
+        for permutation in permutations:
+            logger.debug(permutation)
 
         # Remove equal id's
         if args.unique_jewelry:
-            permutations = [p for p in permutations if p[0].item_id != p[1].item_id]
+            permutations = [permutation for permutation in permutations if permutation[0].item_id != permutation[1].item_id]
         logger.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
-        for p in permutations:
-            logger.debug(p)
+        for permutation in permutations:
+            logger.debug(permutation)
 
         # Make unique
         permutations = stable_unique(permutations)
         logger.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
-        for p in permutations:
-            logger.debug(p)
+        for permutation in permutations:
+            logger.debug(permutation)
 
         entry_dict = {v: None for v in values}
         special_permutations[name] = [name, entry_dict, permutations]
@@ -946,8 +954,8 @@ def permutate(args, player_profile):
                         for gem_permutation in gem_permutations:
                             data.items = gem_permutation
                             # Permutate talents after is usable check, since it is independent of the talents
-                            for t in talent_permutations:
-                                data.update_talents(t)
+                            for talent_permutation in talent_permutations:
+                                data.update_talents(talent_permutation)
                                 # Additional talent usable check could be inserted here.
                                 data.write_to_file(output_file, valid_profiles, additional_options)
                                 valid_profiles += 1
@@ -972,7 +980,7 @@ def permutate(args, player_profile):
     return valid_profiles
 
 
-def checkResultFiles(subdir):
+def check_results_file(subdir):
     """Check the SimC result files of a previous stage for validity."""
     subdir = os.path.join(os.getcwd(), subdir)
 
@@ -1004,21 +1012,21 @@ def grab_profiles(player_profile, stage):
     """Parse output/result files from previous stage and get number of profiles to simulate"""
     subdir_previous_stage = get_subdir(stage - 1)
     if stage == 1:
-        num_generated_profiles = splitter.split(outputFileName, get_subdir(stage), settings.splitting_size, player_profile.wow_class)
+        num_generated_profiles = splitter.split(OUTPUT_FILENAME, get_subdir(stage), settings.splitting_size, player_profile.wow_class)
     else:
         try:
-            checkResultFiles(subdir_previous_stage)
-        except Exception as e:
-            msg = f'Error while checking result files in {subdir_previous_stage}: {e}. Please restart AutoSimc at a previous stage.'
-            raise RuntimeError(msg) from e
+            check_results_file(subdir_previous_stage)
+        except Exception as ex:
+            msg = f'Error while checking result files in {subdir_previous_stage}: {ex}. Please restart AutoSimc at a previous stage.'
+            raise RuntimeError(msg) from ex
         if settings.default_grabbing_method == 'target_error':
             filter_by = 'target_error'
             filter_criterium = None
         elif settings.default_grabbing_method == 'top_n':
             filter_by = 'count'
-            filter_criterium = settings.default_top_n[stage - num_stages - 1]
-        is_last_stage = (stage == num_stages)
-        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), outputFileName, not is_last_stage)
+            filter_criterium = settings.default_top_n[stage - NUM_STAGES - 1]
+        is_last_stage = (stage == NUM_STAGES)
+        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), OUTPUT_FILENAME, not is_last_stage)
     if num_generated_profiles:
         logger.info(f'Found {num_generated_profiles} profile(s) to simulate.')
     return num_generated_profiles
@@ -1037,24 +1045,24 @@ def check_profiles(stage):
 
 
 def static_stage(player_profile, stage):
-    if stage > num_stages:
+    if stage > NUM_STAGES:
         return
     logger.info('----------------------------------------------------')
     logger.info(f'***Entering static mode, STAGE {stage}***')
     num_generated_profiles = grab_profiles(player_profile, stage)
-    is_last_stage = (stage == num_stages)
+    is_last_stage = (stage == NUM_STAGES)
     try:
         num_iterations = settings.default_iterations[stage]
     except Exception:
         num_iterations = None
     if not num_iterations:
         raise ValueError(("Cannot run static mode and skip questions without default iterations set for stage {}.").format(stage))
-    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, num_generated_profiles, scale)
+    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, num_generated_profiles, SCALE)
     static_stage(player_profile, stage + 1)
 
 
 def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=None, stage=1):
-    if stage > num_stages:
+    if stage > NUM_STAGES:
         return
     logger.info('----------------------------------------------------')
     logger.info(f"Entering dynamic mode, STAGE {stage}")
@@ -1074,8 +1082,8 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     # he is given an option to adjust it.
     if previous_target_error is not None and previous_target_error <= target_error:
         logger.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
-    is_last_stage = (stage == num_stages)
-    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, num_generated_profiles, scale)
+    is_last_stage = (stage == NUM_STAGES)
+    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, num_generated_profiles, SCALE)
     dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
 
 
@@ -1112,7 +1120,7 @@ def check_interpreter():
                                                          required_minor))
 
 
-def addFightStyle(profile):
+def add_fight_style(profile):
     filepath = os.path.join(os.getcwd(), settings.file_fightstyle)
     filepath = os.path.abspath(filepath)
     logger.debug(f'Opening fight types data file at "{filepath}".')
@@ -1122,9 +1130,9 @@ def addFightStyle(profile):
             fights = json.load(file)
             if len(fights) > 0:
                 # fetch default_profile
-                for f in fights:
-                    if f["name"] == settings.default_fightstyle:
-                        profile.fightstyle = f  # add the whole json-object, files will get created later
+                for fight in fights:
+                    if fight["name"] == settings.default_fightstyle:
+                        profile.fightstyle = fight  # add the whole json-object, files will get created later
                 if profile.fightstyle is None:
                     raise ValueError(f'No fightstyle found in .json with name: {settings.default_fightstyle}, exiting.')
             else:
@@ -1145,35 +1153,35 @@ def addFightStyle(profile):
 
 
 def main():
-    global class_spec
+    global CLASS_SPEC
 
     # check version of python-interpreter running the script
     check_interpreter()
 
     logger.info(f'AutoSimC - Supported WoW-Version: {__version__}')
 
-    args = handleCommandLine()
+    args = handle_command_line()
 
     logger.debug(f'Parsed command line arguments: {args}')
     logger.debug(f'Parsed settings: {vars(settings)}')
 
-    validateSettings(args)
+    validate_settings(args)
 
     player_profile = build_profile_simc_addon(args)
 
     # can always be rerun since it is now deterministic
-    outputGenerated = False
+    output_generated = False
     num_generated_profiles = None
     if args.sim == 'all' or args.sim is None:
         start = datetime.datetime.now()
         num_generated_profiles = permutate(args, player_profile)
         logger.debug(f'Permutating took {datetime.datetime.now() - start}.')
-        outputGenerated = True
+        output_generated = True
     elif args.sim == 'stage1':
         num_generated_profiles = permutate(args, player_profile)
-        outputGenerated = True
+        output_generated = True
 
-    if outputGenerated:
+    if output_generated:
         if num_generated_profiles == 0:
             raise RuntimeError(('No valid profile combinations found.'
                                 ' Please check the "Invalid profile statistics" output and adjust your'
@@ -1183,7 +1191,7 @@ def main():
                 logger.warning('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
 
     if args.sim:
-        player_profile = addFightStyle(player_profile)
+        player_profile = add_fight_style(player_profile)
         if args.sim == 'stage1' or args.sim == 'all':
             start_stage(player_profile, num_generated_profiles, 1)
         if args.sim == 'stage2':
@@ -1200,6 +1208,6 @@ if __name__ == "__main__":
     try:
         main()
         logging.shutdown()
-    except Exception as e:
-        logger.error(f'Error: {e}', exc_info=True)
+    except Exception as ex:
+        logger.error(f'Error: {ex}', exc_info=True)
         sys.exit(1)

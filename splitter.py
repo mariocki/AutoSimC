@@ -43,7 +43,7 @@ def _purge_subfolder(subfolder):
         try:
             os.makedirs(subfolder)
         except Exception as ex:
-            raise RuntimeError(f'Error creating subfolder "{subfolder}": {ex}.') from e
+            raise RuntimeError(f'Error creating subfolder "{subfolder}": {ex}.') from ex
     else:
         # Avoid PermissionError when re-creating directory directly after deleting the tree.
         # See https://stackoverflow.com/a/16375240
@@ -226,18 +226,17 @@ def _launch_simc_commands(commands, is_last_stage):
 
 
 def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles, scale):
-    output_time = "{:%Y-%m-%d_%H-%M-%S}".format(datetime.datetime.now())
+    output_time = f'{datetime.datetime.now():%Y-%m-%d_%H-%M-%S}'
 
     # some minor progress-bar-initialization
     amount_of_generated_splits = 0
     for file in files_to_sim:
-        if file.endswith(".simc"):
+        if file.endswith('.simc'):
             amount_of_generated_splits += 1
 
     num_files_to_sim = len(files_to_sim)
     if num_files_to_sim == 0:
-        raise ValueError(
-            "Number of files to sim in stage {} is 0. Check path (spaces? special chars?)".format(stage))
+        raise ValueError(f'Number of files to sim in stage {stage} is 0. Check path (spaces? special chars?')
 
     # First generate global simc options
     base_path, _filename = os.path.split(files_to_sim[0])
@@ -247,14 +246,14 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
     # Generate arguments for launching simc for each splitted file
     commands = []
     for file in files_to_sim:
-        if file.endswith(".simc"):
+        if file.endswith('.simc'):
             base_path, filename = os.path.split(file)
             basename, _extension = os.path.splitext(filename)
             outputs = ['output=' + os.path.join(base_path, basename + '.result')]
             if num_files_to_sim == 1 or is_last_stage:
-                html_file = os.path.join(base_path, str(output_time) + "-" + basename + ".html")
+                html_file = os.path.join(base_path, str(output_time) + "-" + basename + '.html')
                 outputs.append('html={}'.format(html_file))
-                json_file = os.path.join(base_path, str(output_time) + "-" + basename + ".json")
+                json_file = os.path.join(base_path, str(output_time) + "-" + basename + '.json')
                 outputs.append('json2={}'.format(json_file))
             cmd = _generateCommand(file, sim_options, outputs)
             commands.append(cmd)
@@ -263,17 +262,17 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
 
 def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stage, num_profiles, scale):
     """Start the simulation process for a given stage/input"""
-    logger.info("Starting simulation.")
-    logger.debug("Started simulation with {}".format(locals()))
+    logger.info('Starting simulation.')
+    logger.debug(f'Started simulation with {locals}')
     subdir = os.path.join(os.getcwd(), subdir)
     files = os.listdir(subdir)
-    files = [f for f in files if not f.endswith(".result")]
+    files = [f for f in files if not f.endswith('.result')]
     files = [os.path.join(subdir, f) for f in files]
 
     start = datetime.datetime.now()
     result = _start_simulation(files, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles, scale)
     end = datetime.datetime.now()
-    logger.info("Simulation took {}.".format(end - start))
+    logger.info(f'Simulation took {end - start}.')
     return result
 
 
