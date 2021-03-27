@@ -446,11 +446,11 @@ def permutate_talents(talents_list):
         logger.debug(f'Talent combination input: {current_talents}')
 
     # Use some itertools magic to unpack the product of all talent combinations
-    product = [itertools.product(*t) for t in all_talent_combinations]
-    product = list(itertools.chain(*product))
+    talent_product = [itertools.product(*t) for t in all_talent_combinations]
+    talent_product = list(itertools.chain(*talent_product))
 
     # Format each permutation back to a nice talent string.
-    permuted_talent_strings = ["".join(s) for s in product]
+    permuted_talent_strings = ["".join(s) for s in talent_product]
     permuted_talent_strings = stable_unique(permuted_talent_strings)
     logger.debug(f'Talent combinations: {permuted_talent_strings}')
     return permuted_talent_strings
@@ -995,7 +995,7 @@ def check_results_file(subdir):
     files = [os.path.join(subdir, f) for f in files]
     for file in files:
         if os.stat(file).st_size <= 0:
-            raise RuntimeError(f'Result file "{file}"" is empty.')
+            logger.warning(f'Result file "{file}"" is empty.')
 
     logger.debug(f'{len(files)} valid result files found in {subdir}.')
     logger.info(f'Checked all files in {subdir} : Everything seems to be alright.')
