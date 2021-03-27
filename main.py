@@ -791,15 +791,15 @@ def permutate(args, player_profile):
     gearInBags = player_profile.simc_options.get('gearInBag')
 
     # concatenate gear in bags to normal gear-list
-    for b in gearInBags:
-        if b in gear:
-            if len(gear[b]) > 0:
-                currentGear = gear[b][0]
-                if b == "finger" or b == "trinket":
-                    currentGear = currentGear + "|" + gear[b][1]
-                for foundGear in gearInBags.get(b):
+    for gear_in_bag in gearInBags:
+        if gear_in_bag in gear:
+            if len(gear[gear_in_bag]) > 0:
+                currentGear = gear[gear_in_bag][0]
+                if gear_in_bag == "finger" or gear_in_bag == "trinket":
+                    currentGear = currentGear + "|" + gear[gear_in_bag][1]
+                for foundGear in gearInBags.get(gear_in_bag):
                     currentGear = currentGear + '|' + foundGear
-                gear[b] = currentGear
+                gear[gear_in_bag] = currentGear
 
     for gear_slot in gear_slots:
         slot_base_name = gear_slot[0]  # First mentioned "correct" item name
@@ -832,8 +832,8 @@ def permutate(args, player_profile):
     talent_permutations = permutate_talents(l_talents)
 
     # Calculate max number of gem slots in equip. Will be used if we do gem permutations.
+    max_gem_slots = 0
     if args.gems is not None:
-        max_gem_slots = 0
         for _slot, items in parsed_gear.items():
             max_gem_on_item_slot = 0
             for item in items:
