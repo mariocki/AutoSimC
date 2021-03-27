@@ -841,6 +841,10 @@ def permutate(args, player_profile):
                     max_gem_on_item_slot = len(item.gem_ids)
             max_gem_slots += max_gem_on_item_slot
 
+    # no gems on gear so no point calculating gem permutations
+    if max_gem_slots == 0:
+        args.gems = None
+
     # Add 'normal' gear to normal permutations, excluding trinket/rings
     gear_normal = {k: v for k, v in parsed_gear.items() if (not k == 'finger' and not k == 'trinket')}
     normal_permutation_options.update(gear_normal)
@@ -1243,5 +1247,5 @@ if __name__ == "__main__":
         main()
         logging.shutdown()
     except Exception as e:
-        logging.error("Error: {e}", exc_info=True)
+        logging.error(f'Error: {e}', exc_info=True)
         sys.exit(1)
