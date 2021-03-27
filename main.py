@@ -389,17 +389,17 @@ def copy_result_file(last_subdir):
                 if file.endswith(".html") or file.endswith(".json"):
                     src = os.path.join(last_subdir, file)
                     dst = os.path.join(result_folder, file)
-                    logging.debug(("Moving file: {} to {}").format(src, dst))
+                    logging.debug(f'Moving file: {src} to {dest}')
                     shutil.move(src, dst)
                     found_html = True
                     if file.endswith(".json"):
                         print_best(os.path.join(result_folder, file))
     if not found_html:
-        logging.warning(("Could not copy html result file, since there was no file found in '{}'.").format(last_subdir))
+        logging.warning(f'Could not copy html result file, since there was no file found in "{last_subdir}".')
 
 
 def cleanup():
-    logging.debug(("Cleaning up"))
+    logging.debug('Cleaning up')
     subdirs = [get_subdir(stage) for stage in range(1, num_stages + 1)]
     copy_result_file(subdirs[-1])
     for subdir in subdirs:
@@ -414,28 +414,6 @@ def validateSettings(args):
             raise FileNotFoundError(f'Simc executable at "{settings.simc_path}" does not exist.')
         else:
             logging.debug(f'Simc executable at "{settings.simc_path}" does not exist.')
-
-    # validate tier-set
-    min_tier_sets = 0
-    max_tier_sets = 6
-    tier_sets = {"Tier26": (t26min, t26max)}
-
-    total_min = 0
-    for tier_name, (tier_set_min, tier_set_max) in tier_sets.items():
-        if tier_set_min < min_tier_sets:
-            raise ValueError(("Invalid tier set minimum ({} < {}) for tier '{}'").
-                             format(tier_set_min, min_tier_sets, tier_name))
-        if tier_set_max > max_tier_sets:
-            raise ValueError(("Invalid tier set maximum ({} > {}) for tier '{}'").
-                             format(tier_set_max, max_tier_sets, tier_name))
-        if tier_set_min > tier_set_max:
-            raise ValueError(("Tier set min > max ({} > {}) for tier '{}'")
-                             .format(tier_set_min, tier_set_max, tier_name))
-        total_min += tier_set_min
-
-    if total_min > max_tier_sets:
-        raise ValueError(("All tier sets together have too much combined min sets ({}=sum({}) > {}).").
-                         format(total_min, [t[0] for t in tier_sets.values()], max_tier_sets))
 
     # use a "safe mode", overwriting the values
     if settings.simc_safe_mode:
@@ -461,8 +439,7 @@ def file_checksum(filename):
 def get_gem_combinations(gems_to_use, num_gem_slots):
     if num_gem_slots <= 0:
         return []
-    combinations = itertools.combinations_with_replacement(
-        gems_to_use, r=num_gem_slots)
+    combinations = itertools.combinations_with_replacement(gems_to_use, r=num_gem_slots)
     return list(combinations)
 
 
@@ -479,7 +456,7 @@ def permutate_talents(talents_list):
                 # Do not permutate the talent row, just add the talent from the profile
                 current_talents.append([talent])
         all_talent_combinations.append(current_talents)
-        logging.debug("Talent combination input: {}".format(current_talents))
+        logging.debug(f'Talent combination input: {current_talents}')
 
     # Use some itertools magic to unpack the product of all talent combinations
     product = [itertools.product(*t) for t in all_talent_combinations]
@@ -488,7 +465,7 @@ def permutate_talents(talents_list):
     # Format each permutation back to a nice talent string.
     permuted_talent_strings = ["".join(s) for s in product]
     permuted_talent_strings = stable_unique(permuted_talent_strings)
-    logging.debug("Talent combinations: {}".format(permuted_talent_strings))
+    logging.debug(f'Talent combinations: {permuted_talent_strings}')
     return permuted_talent_strings
 
 
@@ -505,10 +482,9 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
         pct = 100.0 * current / maximum
         elapsed = datetime.datetime.now() - start_time
         bandwith = current / 1000 / elapsed.total_seconds() if elapsed.total_seconds() else 0.0
-        bandwith_valid = valid_profiles / 1000 / \
-            elapsed.total_seconds() if elapsed.total_seconds() else 0.0
+        bandwith_valid = valid_profiles / 1000 / elapsed.total_seconds() if elapsed.total_seconds() else 0.0
         elapsed = chop_microseconds(elapsed)
-        remaining_time = elapsed * (100.0 / pct - 1.0) if current else "nan"
+        remaining_time = elapsed * (100.0 / pct - 1.0) if current else 'NaN'
         if current > maximum:
             remaining_time = datetime.timedelta(seconds=0)
         if type(remaining_time) is datetime.timedelta:
@@ -530,16 +506,6 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
 class Profile:
     """Represent global profile data"""
     pass
-
-
-class TierCheck:
-
-    def __init__(self, n, minimum, maximum):
-        self.name = f'T{n}'
-        self.n = n
-        self.minimum = minimum
-        self.maximum = maximum
-        self.count = 0
 
 
 class PermutationData:
@@ -589,37 +555,7 @@ class PermutationData:
     def update_talents(self, talents):
         self.talents = talents
 
-    def count_tier(self):
-        self.t26 = 0
-        for item in self.items.values():
-            if item.tier_26:
-                self.t26 += 1
-
-    def check_usable_before_talents(self):
-        self.count_tier()
-
-        if self.t26 < t26min:
-            return "too few tier 26 items"
-        if self.t26 > t26max:
-            return "too many tier 26 items"
-
-        return None
-
     def get_profile_name(self, valid_profile_number):
-        # namingdata contains info for the profile-name
-        namingData = {"T26": ""}
-
-        for tier in ([26]):
-            count = getattr(self, "t" + str(tier))
-            tiername = "T" + str(tier)
-            if count:
-                pieces = 0
-                if count >= 2:
-                    pieces = 2
-                if count >= 4:
-                    pieces = 4
-                    namingData[tiername] = "_{}_{}p".format(tiername, pieces)
-
         return str(valid_profile_number).rjust(self.max_profile_chars, "0")
 
     def get_profile(self):
@@ -690,51 +626,39 @@ def build_profile_simc_addon(args):
             player_profile.args = args
             player_profile.simc_options = {}
             for line in f:
-                if line == "\n":
+                if line == '\n':
                     continue
-                if line.startswith("#"):
-                    if line.startswith("# bfa.reorigination_array_stacks"):
-                        splitted = line.split("=", 1)[1].rstrip().lstrip()
+                if line.startswith('#'):
+                    if line.startswith('# bfa.reorigination_array_stacks'):
+                        splitted = line.split('=', 1)[1].rstrip().lstrip()
                         player_profile.simc_options["bfa.reorigination_array_stacks"] = splitted
-                    if line.startswith("# SimC Addon") or line.startswith(
-                            "# 8.0 Note:") or line == "" or line == "\n":
+                    if line.startswith('# SimC Addon') or line.startswith('# 8.0 Note:') or line == '' or line == '\n':
                         continue
                     else:
                         # gear-in-bag handling
-                        splittedLine = line.replace("#", "").replace(
-                            "\n", "").lstrip().rstrip().split("=", 1)
+                        splittedLine = line.replace('#', '').replace('\n', '').lstrip().rstrip().split('=', 1)
                         for gearslot in gear_slots:
-                            if splittedLine[0].replace("\n", "") == gearslot[0]:
-                                gearInBags[splittedLine[0].replace("\n", "")].append(
-                                    splittedLine[1].replace("\n", "").lstrip().rstrip())
+                            if splittedLine[0].replace('\n', '') == gearslot[0]:
+                                gearInBags[splittedLine[0].replace('\n', '')].append(splittedLine[1].replace('\n', '').lstrip().rstrip())
                             # trinket and finger-handling
-                            trinketOrRing = splittedLine[0].replace(
-                                "\n", "").replace("1", "").replace("2", "")
-                            if (trinketOrRing == "finger" or trinketOrRing == "trinket") and trinketOrRing == gearslot[
-                                    0]:
-                                gearInBags[splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")].append(
-                                    splittedLine[1].lstrip().rstrip())
+                            trinketOrRing = splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')
+                            if (trinketOrRing == 'finger' or trinketOrRing == 'trinket') and trinketOrRing == gearslot[0]:
+                                gearInBags[splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')].append(splittedLine[1].lstrip().rstrip())
                 else:
                     splittedLine = line.split("=", 1)
-                    if splittedLine[0].replace("\n", "") in valid_classes:
-                        c_class = splittedLine[0].replace(
-                            "\n", "").lstrip().rstrip()
+                    if splittedLine[0].replace('\n', '') in valid_classes:
+                        c_class = splittedLine[0].replace('\n', '').lstrip().rstrip()
                         player_profile.wow_class = c_class
-                        player_profile.profile_name = splittedLine[1].replace(
-                            "\n", "").lstrip().rstrip()
-                    if splittedLine[0].replace("\n", "") in simc_profile_options:
-                        player_profile.simc_options[splittedLine[0].replace("\n", "")] = splittedLine[1].replace("\n",
-                                                                                                                 "").lstrip().rstrip()
+                        player_profile.profile_name = splittedLine[1].replace('\n', '').lstrip().rstrip()
+                    if splittedLine[0].replace('\n', '') in simc_profile_options:
+                        player_profile.simc_options[splittedLine[0].replace('\n', '')] = splittedLine[1].replace('\n', '').lstrip().rstrip()
                     for gearslot in gear_slots:
-                        if splittedLine[0].replace("\n", "") == gearslot[0]:
-                            gear[splittedLine[0].replace("\n", "")].append(
-                                splittedLine[1].replace("\n", "").lstrip().rstrip())
+                        if splittedLine[0].replace('\n', '') == gearslot[0]:
+                            gear[splittedLine[0].replace('\n', '')].append(splittedLine[1].replace('\n', '').lstrip().rstrip())
                         # trinket and finger-handling
-                        trinketOrRing = splittedLine[0].replace(
-                            "\n", "").replace("1", "").replace("2", "")
+                        trinketOrRing = splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')
                         if (trinketOrRing == "finger" or trinketOrRing == "trinket") and trinketOrRing == gearslot[0]:
-                            gear[splittedLine[0].replace("\n", "").replace("1", "").replace("2", "")].append(
-                                splittedLine[1].lstrip().rstrip())
+                            gear[splittedLine[0].replace('\n', '').replace('1', '').replace('2', '')].append(splittedLine[1].lstrip().rstrip())
 
     except UnicodeDecodeError as e:
         raise RuntimeError("""AutoSimC could not decode your input file '{file}' with encoding '{enc}'.
@@ -748,11 +672,10 @@ def build_profile_simc_addon(args):
             c_class, player_profile.simc_options["spec"])
 
     # Build 'general' profile options which do not permutate once into a simc-string
-    logging.info("SimC options: {}".format(player_profile.simc_options))
+    logging.info(f'SimC options: {player_profile.simc_options}')
     player_profile.general_options = "\n".join(["{}={}".format(key, value) for key, value in
                                                 player_profile.simc_options.items()])
-    logging.debug("Built simc general options string: {}".format(
-        player_profile.general_options))
+    logging.debug(f'Built simc general options string: {player_profile.general_options}')
 
     # Parse gear
     player_profile.simc_options["gear"] = gear
@@ -763,7 +686,6 @@ def build_profile_simc_addon(args):
 
 class Item:
     """WoW Item"""
-    tiers = [26]
 
     def __init__(self, slot, input_string=""):
         self._slot = slot
@@ -773,18 +695,10 @@ class Item:
         self.enchant_ids = []
         self._gem_ids = []
         self.drop_level = 0
-        self.tier_set = {}
         self.extra_options = {}
 
-        for tier in self.tiers:
-            n = "T{}".format(tier)
-            if self.name.startswith(n):
-                setattr(self, "tier_{}".format(tier), True)
-                self.name = self.name[len(n):]
-            else:
-                setattr(self, "tier_{}".format(tier), False)
         if len(input_string):
-            self.parse_input(input_string.strip("\""))
+            self.parse_input(input_string.strip('"'))
 
         self._build_output_str()  # Pre-Build output string as good as possible
 
@@ -807,33 +721,25 @@ class Item:
         self._build_output_str()
 
     def parse_input(self, input_string):
-        parts = input_string.split(",")
+        parts = input_string.split(',')
         self.name = parts[0]
 
-        for tier in self.tiers:
-            n = "T{}".format(tier)
-            if self.name.startswith(n):
-                setattr(self, "tier_{}".format(tier), True)
-                self.name = self.name[len(n):]
-            else:
-                setattr(self, "tier_{}".format(tier), False)
-
-        splitted_name = self.name.split("--")
+        splitted_name = self.name.split('--')
         if len(splitted_name) > 1:
             self.name = splitted_name[1]
 
         for s in parts[1:]:
             name, value = s.split("=")
             name = name.lower()
-            if name == "id":
+            if name == 'id':
                 self.item_id = int(value)
-            elif name == "bonus_id":
+            elif name == 'bonus_id':
                 self.bonus_ids = [int(v) for v in value.split("/")]
-            elif name == "enchant_id":
+            elif name == 'enchant_id':
                 self.enchant_ids = [int(v) for v in value.split("/")]
-            elif name == "gem_id":
+            elif name == 'gem_id':
                 self.gem_ids = [int(v) for v in value.split("/")]
-            elif name == "drop_level":
+            elif name == 'drop_level':
                 self.drop_level = int(value)
             else:
                 if name not in self.extra_options:
@@ -841,24 +747,18 @@ class Item:
                 self.extra_options[name].append(value)
 
     def _build_output_str(self):
-        self.output_str = "{}={},id={}". \
-            format(self.slot,
-                   self.name,
-                   self.item_id)
+        self.output_str = f'{self.slot}={self.name},id={self.item_id}'
         if len(self.bonus_ids):
-            self.output_str += ",bonus_id=" + \
-                "/".join([str(v) for v in self.bonus_ids])
+            self.output_str += ",bonus_id=" + "/".join([str(v) for v in self.bonus_ids])
         if len(self.enchant_ids):
-            self.output_str += ",enchant_id=" + \
-                "/".join([str(v) for v in self.enchant_ids])
+            self.output_str += ",enchant_id=" + "/".join([str(v) for v in self.enchant_ids])
         if len(self.gem_ids):
-            self.output_str += ",gem_id=" + \
-                "/".join([str(v) for v in self.gem_ids])
+            self.output_str += ",gem_id=" + "/".join([str(v) for v in self.gem_ids])
         if self.drop_level > 0:
             self.output_str += ",drop_level=" + str(self.drop_level)
         for name, values in self.extra_options.items():
             for value in values:
-                self.output_str += ",{}={}".format(name, value)
+                self.output_str += f',{name}={value}'
 
     def __str__(self):
         return "Item({})".format(self.output_str)
@@ -1054,27 +954,20 @@ def permutate(args, player_profile):
                     entries += perm_trinket
                     items = {e.slot: e for e in entries if type(e) is Item}
                     data = PermutationData(items, player_profile, max_profile_chars)
-                    is_unusable_before_talents = data.check_usable_before_talents()
-                    if not is_unusable_before_talents:
-                        # add gem-permutations to gear
-                        if args.gems is not None:
-                            gem_permutations = data.permutate_gems(items, splitted_gems)
-                        else:
-                            gem_permutations = (items,)
-                        for gem_permutation in gem_permutations:
-                            data.items = gem_permutation
-                            # Permutate talents after is usable check, since it is independent of the talents
-                            for t in talent_permutations:
-                                data.update_talents(t)
-                                # Additional talent usable check could be inserted here.
-                                data.write_to_file(output_file, valid_profiles, additional_options)
-                                valid_profiles += 1
-                                processed += 1
+                    # add gem-permutations to gear
+                    if args.gems is not None:
+                        gem_permutations = data.permutate_gems(items, splitted_gems)
                     else:
-                        processed += len(talent_permutations) * gem_perms
-                        if is_unusable_before_talents not in unusable_histogram:
-                            unusable_histogram[is_unusable_before_talents] = 0
-                        unusable_histogram[is_unusable_before_talents] += len(talent_permutations) * gem_perms
+                        gem_permutations = (items,)
+                    for gem_permutation in gem_permutations:
+                        data.items = gem_permutation
+                        # Permutate talents after is usable check, since it is independent of the talents
+                        for t in talent_permutations:
+                            data.update_talents(t)
+                            # Additional talent usable check could be inserted here.
+                            data.write_to_file(output_file, valid_profiles, additional_options)
+                            valid_profiles += 1
+                            processed += 1
                     progress += 1
                     print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
 
@@ -1100,24 +993,24 @@ def checkResultFiles(subdir):
     subdir = os.path.join(os.getcwd(), subdir)
 
     if not os.path.exists(subdir):
-        raise FileNotFoundError("Subdir '{}' does not exist.".format(subdir))
+        raise FileNotFoundError(f'Subdir "{subdir}"')
 
     files = os.listdir(subdir)
     if len(files) == 0:
-        raise FileNotFoundError("No files in: " + str(subdir))
+        raise FileNotFoundError(f'No files in: {subdir}"')
 
-    files = [f for f in files if f.endswith(".result")]
+    files = [f for f in files if f.endswith('.result')]
     files = [os.path.join(subdir, f) for f in files]
     for file in files:
         if os.stat(file).st_size <= 0:
-            raise RuntimeError("Result file '{}' is empty.".format(file))
+            raise RuntimeError(f'Result file "{file}"" is empty.')
 
-    logging.debug("{} valid result files found in {}.".format(len(files), subdir))
-    logging.info("Checked all files in " + str(subdir) + " : Everything seems to be alright.")
+    logging.debug(f'{len(files)} valid result files found in {subdir}.')
+    logging.info('Checked all files in {subdir} : Everything seems to be alright.')
 
 
 def get_subdir(stage):
-    subdir = "stage_{:n}".format(stage)
+    subdir = f'stage_{stage:n}'
     subdir = os.path.join(settings.temporary_folder_basepath, subdir)
     subdir = os.path.abspath(subdir)
     return subdir
@@ -1133,21 +1026,18 @@ def grab_profiles(player_profile, stage):
         try:
             checkResultFiles(subdir_previous_stage)
         except Exception as e:
-            msg = "Error while checking result files in {}: {}\nPlease restart AutoSimc at a previous stage.". \
-                format(subdir_previous_stage, e)
-            # raise RuntimeError(msg) from e
-        if settings.default_grabbing_method == ("target_error"):
-            filter_by = "target_error"
+            msg = f'Error while checking result files in {subdir_previous_stage}: {e}. Please restart AutoSimc at a previous stage.'
+            raise RuntimeError(msg) from e
+        if settings.default_grabbing_method == 'target_error':
+            filter_by = 'target_error'
             filter_criterium = None
-        elif settings.default_grabbing_method == ("top_n"):
-            filter_by = "count"
+        elif settings.default_grabbing_method == 'top_n':
+            filter_by = 'count'
             filter_criterium = settings.default_top_n[stage - num_stages - 1]
         is_last_stage = (stage == num_stages)
-        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage,
-                                                    get_subdir(stage), outputFileName, not is_last_stage)
+        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), outputFileName, not is_last_stage)
     if num_generated_profiles:
-        logging.info("Found {} profile(s) to simulate.".format(
-            num_generated_profiles))
+        logging.info(f'Found {num_generated_profiles} profile(s) to simulate.')
     return num_generated_profiles
 
 

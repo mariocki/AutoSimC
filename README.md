@@ -117,10 +117,6 @@ Example :
 
     neck=,id=130234,enchant_id=5890,bonus_id=1762/689/600/670,gem_id=130220|,id=134529,enchant_id=5890,bonus_id=3413/1808/1507/3336,gem_id=130220
 
-To specify Tier set and item names, use the following syntax:
-
-    neck=T21--chain_of_the_unmaker,id=152283,enchant_id=5890
-
 (item name is not necessary)
 
 If you want to add rotations, stance or others advanced SimulationCraft feature, add them with the "other=" field :
@@ -136,7 +132,6 @@ For talent permutation, just replace the talent row your want to permutate (tale
 
 ## settings.py
 You can/have to finetune your settings in the settings.py file:
-- set min/max amount of tier-items
 - default number of iterations or target_error for each stage
 - change default for type of fight (patchwerk, LightMovement etc.)
 - and several more
@@ -178,7 +173,7 @@ If you want to expand already existing fights, e.g. Beastlord: Create a new Prof
   To resolve this issue, tell your text editor to save the file with a 'utf-8' encoding. Alternatively, you can remove any special, non-ASCII character from the file to circumvent the problem, since ASCII is a subset of most encodings.
 1. I get an error message *ValueError: No valid profile combinations found. Please check the 'Invalid profile statistics' output and adjust your input.txt and settings.py.*
 
-   This means that when AutoSimC generated all possible combinations and filtered them according to the criterias set up in settings.py, 0 valid profiles have been generated. Usually, this is because that your profile does not match the filtering criteria in settings.py about min_legendaries, max_legendaries, tier_min and tier_max number of items required.
+   This means that when AutoSimC generated all possible combinations and filtered them according to the criterias set up in settings.py, 0 valid profiles have been generated. 
   To resolve this issue, check the console/log output line starting with *Invalid profile statistics* to see a list of reasons and their percentage for rejecting the generated profiles. It should then be easy to adjust your profile or settings.py to get some valid profiles.
 
 1. How can I simulate multiple enemy targets?
