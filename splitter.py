@@ -1,19 +1,16 @@
 import os
 import shutil
-import sys
 import subprocess
-import time
 import datetime
 import logging
 import concurrent.futures
 import re
 import math
 
-from settings import settings
 try:
     from settings_local import settings
 except ImportError:
-    pass
+    from settings import settings
 
 
 def _parse_profiles_from_file(fd, user_class):
@@ -45,8 +42,7 @@ def _purge_subfolder(subfolder):
         try:
             os.makedirs(subfolder)
         except Exception as e:
-            raise RuntimeError(
-                _("Error creating subfolder '{}': {}.").format(e)) from e
+            raise RuntimeError(f'Error creating subfolder "{subfolder}": {e}.') from e
     else:
         # Avoid PermissionError when re-creating directory directly after deleting the tree.
         # See https://stackoverflow.com/a/16375240
@@ -159,9 +155,7 @@ def _generateCommand(file, global_option_file, outputs):
 
 
 def _worker(command, counter, maximum, starttime, num_workers):
-    logging.info("Processing: {} {}/{}".format(command[2],
-                                               counter + 1,
-                                               maximum))
+    logging.info(f'Processing: {command[2]} {counter + 1}/{maximum}')
     try:
         if counter > 0 and counter % num_workers == 0:
             duration = datetime.datetime.now() - starttime
@@ -171,16 +165,14 @@ def _worker(command, counter, maximum, starttime, num_workers):
             logging.info("Remaining calculation time (est.): {}.".format(remaining_time))
             logging.info("Finish time (est.): {}".format(finish_time))
     except Exception:
-        logging.error("Error while calculating progress time.", exc_info=True)
+        logging.error('Error while calculating progress time.', exc_info=True)
 
     if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-        p = subprocess.run(command, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE)
+        p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     else:
         p = subprocess.run(command)
     if p.returncode != 0:
-        logging.error("SimulationCraft error! Worker #{} returned error code {}.".format(
-            counter, p.returncode))
+        logging.error(f'SimulationCraft error! Worker #{counter} returned error code {p.returncode}.')
         if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
             logging.info("SimulationCraft #{} stderr: \n{}".format(counter, p.stderr.read().decode()))
             logging.debug("SimulationCraft #{} stdout: \n{}".format(counter, p.stdout.read().decode()))
@@ -303,8 +295,7 @@ def _filter_by_target_error(metric_results):
         metric_best_player = metric_results[0]["metric"]
         metric_error_best_player = metric_results[0]["metric_error"]
         if metric_error_best_player == 0:
-            raise ValueError(_("Metric error of best player {} is zero. Cannot filter by target_error.")
-                             .format(metric_results[0]["name"]))
+            raise ValueError(f'Metric error of best player {metric_results[0]["name"]} is zero. Cannot filter by target_error.')
         for entry in metric_results:
             metric = entry["metric"]
             err = entry["metric_error"]
@@ -317,16 +308,16 @@ def _filter_by_target_error(metric_results):
 
 def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin, split_optimally=True):
     """Determine best simulations and grabs their profiles for further simming"""
-    logging.info("Grab Best variables: filter by: " + str(filter_by))
-    logging.info("Grab Best variables: filter_criterium: " + str(filter_criterium))
-    logging.info("Grab Best variables: target_subdir: " + str(target_subdir))
-    logging.info("Grab Best variables: origin: " + str(origin))
+    logging.info(f'Grab Best variables: filter by: {filter_by}')
+    logging.info(f'Grab Best variables: filter_criterium: {filter_criterium}')
+    logging.info(f'Grab Best variables: target_subdir: {target_subdir}')
+    logging.info(f'Grab Best variables: origin: {origin}')
 
-    user_class = ""
+    user_class = ''
 
     best = []
     source_subdir = os.path.join(os.getcwd(), source_subdir)
-    logging.info("Variables: source_subdir: " + str(source_subdir))
+    logging.info(f'Variables: source_subdir: {source_subdir}')
     files = os.listdir(source_subdir)
     files = [f for f in files if f.endswith(".result")]
     files = [os.path.join(source_subdir, f) for f in files]
@@ -335,8 +326,7 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     start = datetime.datetime.now()
     metric = settings.select_by_metric
     logging.info("Selecting by metric: '{}'.".format(metric))
-    metric_regex = re.compile(
-        "\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
+    metric_regex = re.compile("\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
         # if os.stat(file).st_size <= 0:
         # raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))

@@ -1,14 +1,9 @@
 # pylint: disable=C0103
 # pylint: disable=C0301
 
-import splitter
-import specdata
-from settings import settings
-import configparser
 import sys
 import datetime
 import os
-import glob
 import json
 import shutil
 import argparse
@@ -16,21 +11,19 @@ import logging
 import itertools
 import collections
 import copy
-import subprocess
 import hashlib
-import re
 from urllib.error import URLError
-from urllib.request import urlopen, urlretrieve, Request
-import platform
-import locale
+from urllib.request import urlopen, Request
 import xml.etree.ElementTree as ET
-from termcolor import colored, cprint
+from termcolor import colored
 import coloredlogs
+import splitter
+import specdata
 
 try:
     from settings_local import settings
 except ImportError:
-    pass
+    from settings import settings
 
 __version__ = "9.0.1"
 
@@ -223,7 +216,7 @@ def parse_command_line_args():
     parser.add_argument('-quiet', '--quiet',
                         dest="quiet",
                         action='store_true',
-                        help='Run quietly. /!\ Not implemented yet')
+                        help=r'Run quietly. \! Not implemented yet')
 
     parser.add_argument('-version', '--version',
                         action='version', version='%(prog)s {}'.format(__version__))
@@ -302,7 +295,7 @@ def fetch_from_wowhead(dict, ilvl):
             f.write(json_string)
         return json_string
     except URLError as ex:
-        logging.warn(f'Could not access download from wowhead {ex.reason}')
+        logging.warning(f'Could not access download from wowhead {ex.reason}')
         return ""
 
 
@@ -388,9 +381,9 @@ def copy_result_file(last_subdir):
             for file in files:
                 if file.endswith(".html") or file.endswith(".json"):
                     src = os.path.join(last_subdir, file)
-                    dst = os.path.join(result_folder, file)
+                    dest = os.path.join(result_folder, file)
                     logging.debug(f'Moving file: {src} to {dest}')
-                    shutil.move(src, dst)
+                    shutil.move(src, dest)
                     found_html = True
                     if file.endswith(".json"):
                         print_best(os.path.join(result_folder, file))
@@ -487,7 +480,7 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
         remaining_time = elapsed * (100.0 / pct - 1.0) if current else 'NaN'
         if current > maximum:
             remaining_time = datetime.timedelta(seconds=0)
-        if type(remaining_time) is datetime.timedelta:
+        if isinstance(remaining_time, datetime.timedelta):
             remaining_time = chop_microseconds(remaining_time)
         valid_pct = 100.0 * valid_profiles / current if current else 0.0
         logging.info("Processed {}/{} ({:5.2f}%) valid {} ({:5.2f}%) elapsed_time {} "
@@ -505,7 +498,6 @@ def print_permutation_progress(valid_profiles, current, maximum, start_time, max
 
 class Profile:
     """Represent global profile data"""
-    pass
 
 
 class PermutationData:
@@ -784,7 +776,6 @@ def product(*iterables):
     if len(iterables) == 0:
         yield ()
     else:
-        iterables = iterables
         it = iterables[0]
         for item in iter(it):
             for items in product(*iterables[1:]):
@@ -926,8 +917,7 @@ def permutate(args, player_profile):
     gem_perms = 1
     if args.gems is not None:
         max_num_gems = max_gem_slots + len(splitted_gems)
-        gem_perms = len(list(itertools.combinations_with_replacement(
-            range(max_gem_slots), max_num_gems)))
+        gem_perms = len(list(itertools.combinations_with_replacement(range(max_gem_slots), max_num_gems)))
         max_nperm *= gem_perms
         permutations_product["gems"] = gem_perms
     permutations_product["talents"] = len(talent_permutations)
@@ -952,22 +942,23 @@ def permutate(args, player_profile):
                     entries = perm_normal
                     entries += perm_finger
                     entries += perm_trinket
-                    items = {e.slot: e for e in entries if type(e) is Item}
+                    items = {e.slot: e for e in entries if isinstance(e, Item)}
                     data = PermutationData(items, player_profile, max_profile_chars)
                     # add gem-permutations to gear
                     if args.gems is not None:
                         gem_permutations = data.permutate_gems(items, splitted_gems)
                     else:
                         gem_permutations = (items,)
-                    for gem_permutation in gem_permutations:
-                        data.items = gem_permutation
-                        # Permutate talents after is usable check, since it is independent of the talents
-                        for t in talent_permutations:
-                            data.update_talents(t)
-                            # Additional talent usable check could be inserted here.
-                            data.write_to_file(output_file, valid_profiles, additional_options)
-                            valid_profiles += 1
-                            processed += 1
+                    if gem_permutations is not None:
+                        for gem_permutation in gem_permutations:
+                            data.items = gem_permutation
+                            # Permutate talents after is usable check, since it is independent of the talents
+                            for t in talent_permutations:
+                                data.update_talents(t)
+                                # Additional talent usable check could be inserted here.
+                                data.write_to_file(output_file, valid_profiles, additional_options)
+                                valid_profiles += 1
+                                processed += 1
                     progress += 1
                     print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
 
@@ -1061,7 +1052,7 @@ def static_stage(player_profile, stage):
     if stage > num_stages:
         return
     logging.info('----------------------------------------------------')
-    logging.info(("***Entering static mode, STAGE {}***").format(stage))
+    logging.info(f'***Entering static mode, STAGE {stage}***')
     num_generated_profiles = prepare_profiles(player_profile, stage)
     is_last_stage = (stage == num_stages)
     try:
@@ -1070,7 +1061,6 @@ def static_stage(player_profile, stage):
         num_iterations = None
     if not num_iterations:
         raise ValueError(("Cannot run static mode and skip questions without default iterations set for stage {}.").format(stage))
-    num_iterations = int(iterations_choice)
     splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, num_generated_profiles, scale)
     static_stage(player_profile, stage + 1)
 
@@ -1095,7 +1085,7 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     # if the user chose a target_error which is higher than one chosen in the previous stage
     # he is given an option to adjust it.
     if previous_target_error is not None and previous_target_error <= target_error:
-        logging.warn(("Warning Target_Error chosen in stage {}: {} <= Default_Target_Error for stage {}: {}").format(stage - 1, previous_target_error, stage, target_error))
+        logging.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
     is_last_stage = (stage == num_stages)
     splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, num_generated_profiles, scale)
     dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
@@ -1103,18 +1093,18 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
 
 def start_stage(player_profile, num_generated_profiles, stage):
     logging.info('----------------------------------------------------')
-    logging.info(("Starting at stage {}").format(stage))
-    logging.info(("You selected grabbing method '{}'.").format(settings.default_grabbing_method))
+    logging.info(f'Starting at stage {stage}')
+    logging.info(f'You selected grabbing method "{settings.default_grabbing_method}".')
     mode_choice = int(settings.auto_choose_static_or_dynamic)
     valid_modes = (1, 2)
     if mode_choice not in valid_modes:
-        raise RuntimeError(("Invalid simulation mode '{}' selected. Valid modes: {}.").format(mode_choice, valid_modes))
+        raise RuntimeError(f'Invalid simulation mode "{mode_choice}" selected. Valid modes: {valid_modes}.')
     if mode_choice == 1:
         static_stage(player_profile, stage)
     elif mode_choice == 2:
         dynamic_stage(player_profile, num_generated_profiles, None, stage)
     else:
-        assert (False)
+        assert False
 
 
 def check_interpreter():
@@ -1170,15 +1160,7 @@ class UntranslatedFileHandler(logging.FileHandler):
         self.setFormatter(logging.Formatter("%(asctime)-15s %(levelname)s %(message)s"))
 
     def emit(self, record):
-        if isinstance(record.msg, TranslatedText):
-            orig_msg = record.msg
-            try:
-                record.msg = record.msg.original_message
-                logging.FileHandler.emit(self, record)
-            finally:
-                record.msg = orig_msg
-        else:
-            logging.FileHandler.emit(self, record)
+        logging.FileHandler.emit(self, record)
 
 ########################
 #     Program Start    #
