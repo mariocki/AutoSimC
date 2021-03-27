@@ -14,10 +14,10 @@ except ImportError:
     from settings import settings
 
 
-def _parse_profiles_from_file(fd, user_class):
+def _parse_profiles_from_file(file_pointer, user_class):
     """Parse a simc file, and yield each player entry (between two class=name lines)"""
     current_profile = []
-    for line in fd:
+    for line in file_pointer:
         line = line.rstrip()  # Remove trailing \n
         if line.startswith(user_class + "="):
             if len(current_profile):
@@ -140,11 +140,11 @@ def _generate_sim_options(output_file, sim_type, simtype_value, is_last_stage, p
         elif player_profile.class_role == "spell":
             cmd.append('scale_only=int,crit,haste,mastery,vers')
     logger.info("Commandline: {}".format(cmd))
-    with open(output_file, "w") as f:
-        f.write(" ".join(cmd))
+    with open(output_file, "w") as file_pointer:
+        file_pointer.write(" ".join(cmd))
 
 
-def _generateCommand(file, global_option_file, outputs):
+def _generate_command(file, global_option_file, outputs):
     """Generate command line arguments to invoke SimulationCraft"""
     cmd = []
     cmd.append(os.path.normpath(os.path.expanduser(settings.simc_path)))
@@ -169,15 +169,15 @@ def _worker(command, counter, maximum, starttime, num_workers):
         logger.error('Error while calculating progress time.', exc_info=True)
 
     if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-        p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sub_process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     else:
-        p = subprocess.run(command)
-    if p.returncode != 0:
-        logger.error(f'SimulationCraft error! Worker #{counter} returned error code {p.returncode}.')
+        sub_process = subprocess.run(command, check=False)
+    if sub_process.returncode != 0:
+        logger.error(f'SimulationCraft error! Worker #{counter} returned error code {sub_process.returncode}.')
         if settings.multi_sim_disable_console_output and maximum > 1 and num_workers > 1:
-            logger.info("SimulationCraft #{} stderr: \n{}".format(counter, p.stderr.read().decode()))
-            logger.debug("SimulationCraft #{} stdout: \n{}".format(counter, p.stdout.read().decode()))
-    return p.returncode
+            logger.info("SimulationCraft #{} stderr: \n{}".format(counter, sub_process.stderr.read().decode()))
+            logger.debug("SimulationCraft #{} stdout: \n{}".format(counter, sub_process.stdout.read().decode()))
+    return sub_process.returncode
 
 
 def _launch_simc_commands(commands, is_last_stage):
@@ -201,14 +201,13 @@ def _launch_simc_commands(commands, is_last_stage):
         # simulation is finished.
         for future in concurrent.futures.as_completed(futures):
             try:
-                returnCode = int(future.result())
-                if returnCode != 0:
-                    logger.error(
-                        "Invalid return code from SimC: {}".format(returnCode))
+                return_code = int(future.result())
+                if return_code != 0:
+                    logger.error(f'Invalid return code from SimC: {return_code}')
                     # Hacky way to shut down all remaining sims, apparently just calling shutdown(wait=False0 on the
                     # executor does not have the same effect.
-                    for f in futures:
-                        f.cancel()
+                    for future_to_cancel in futures:
+                        future_to_cancel.cancel()
                     executor.shutdown(wait=False)
                     return False
             except Exception as ex:
@@ -218,14 +217,14 @@ def _launch_simc_commands(commands, is_last_stage):
         return True
     except KeyboardInterrupt:
         logger.warning("KeyboardInterrupt in simc executor. Stopping.")
-        for f in futures:
-            f.cancel()
+        for future in futures:
+            future.cancel()
         executor.shutdown(wait=False)
         raise
     return False
 
 
-def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles, scale):
+def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stage, is_last_stage, scale):
     output_time = f'{datetime.datetime.now():%Y-%m-%d_%H-%M-%S}'
 
     # some minor progress-bar-initialization
@@ -255,12 +254,12 @@ def _start_simulation(files_to_sim, player_profile, simtype, simtype_value, stag
                 outputs.append('html={}'.format(html_file))
                 json_file = os.path.join(base_path, str(output_time) + "-" + basename + '.json')
                 outputs.append('json2={}'.format(json_file))
-            cmd = _generateCommand(file, sim_options, outputs)
+            cmd = _generate_command(file, sim_options, outputs)
             commands.append(cmd)
     return _launch_simc_commands(commands, is_last_stage)
 
 
-def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stage, num_profiles, scale):
+def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stage, scale):
     """Start the simulation process for a given stage/input"""
     logger.info('Starting simulation.')
     logger.debug(f'Started simulation with {locals}')
@@ -270,18 +269,18 @@ def simulate(subdir, simtype, simtype_value, player_profile, stage, is_last_stag
     files = [os.path.join(subdir, f) for f in files]
 
     start = datetime.datetime.now()
-    result = _start_simulation(files, player_profile, simtype, simtype_value, stage, is_last_stage, num_profiles, scale)
+    result = _start_simulation(files, player_profile, simtype, simtype_value, stage, is_last_stage, scale)
     end = datetime.datetime.now()
     logger.info(f'Simulation took {end - start}.')
     return result
 
 
-def _filter_by_length(metric_results, n):
+def _filter_by_length(metric_results, index):
     """
     filter metric(dps/hps/tmi) list to only contain n results
     dps_results is a pre-sorted list (dps, name) in descending order
     """
-    return metric_results[:n]
+    return metric_results[:index]
 
 
 def _filter_by_target_error(metric_results):
@@ -326,7 +325,7 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
     start = datetime.datetime.now()
     metric = settings.select_by_metric
     logger.info("Selecting by metric: '{}'.".format(metric))
-    metric_regex = re.compile("\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
+    metric_regex = re.compile(r"\s*{metric}=(\d+\.\d+) {metric}-Error=(\d+\.\d+)/(\d+\.\d+)%".format(metric=metric), re.IGNORECASE)
     for file in files:
         # if os.stat(file).st_size <= 0:
         # raise RuntimeError("Error: result file '{}' is empty, exiting.".format(file))
@@ -356,8 +355,7 @@ def grab_best(filter_by, filter_criterium, source_subdir, target_subdir, origin,
 
     # sort best metric, descending order
     best = list(reversed(sorted(best, key=lambda entry: entry["metric"])))
-    logger.debug("Result from parsing {} with metric '{}' len={}".format(
-        metric, metric, len(best)))
+    logger.debug(f'Result from parsing {metric} with metric "{metric}" len={len(best)}')
 
     if filter_by == "target_error":
         filterd_best = _filter_by_target_error(best)

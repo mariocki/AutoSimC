@@ -50,6 +50,11 @@ gem_ids = {"16haste": 311865,
            "mast": 311864,  # always contains available maximum quality
            }
 
+OUTPUT_FILENAME = settings.default_outputFileName
+ADDITIONAL_FILENAME = settings.default_additionalFileName
+NUM_STAGES = settings.num_stages
+SCALE = settings.simc_scale_factors_last_stage
+
 # Global logger instance
 logger = logging.getLogger()
 if logger.hasHandlers():
@@ -232,7 +237,7 @@ def handle_command_line():
     if args.sim == 'permutate_only':
         args.sim = None
 
-    # For now, just write command line arguments into globals
+    # override the globals with th arg values
     global OUTPUT_FILENAME
     OUTPUT_FILENAME = args.outputfile
 
@@ -1049,7 +1054,6 @@ def static_stage(player_profile, stage):
         return
     logger.info('----------------------------------------------------')
     logger.info(f'***Entering static mode, STAGE {stage}***')
-    num_generated_profiles = grab_profiles(player_profile, stage)
     is_last_stage = (stage == NUM_STAGES)
     try:
         num_iterations = settings.default_iterations[stage]
@@ -1057,7 +1061,7 @@ def static_stage(player_profile, stage):
         num_iterations = None
     if not num_iterations:
         raise ValueError(("Cannot run static mode and skip questions without default iterations set for stage {}.").format(stage))
-    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, num_generated_profiles, SCALE)
+    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, SCALE)
     static_stage(player_profile, stage + 1)
 
 
@@ -1083,7 +1087,7 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     if previous_target_error is not None and previous_target_error <= target_error:
         logger.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
     is_last_stage = (stage == NUM_STAGES)
-    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, num_generated_profiles, SCALE)
+    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, SCALE)
     dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
 
 
@@ -1153,8 +1157,6 @@ def add_fight_style(profile):
 
 
 def main():
-    global CLASS_SPEC
-
     # check version of python-interpreter running the script
     check_interpreter()
 
