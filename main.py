@@ -145,12 +145,7 @@ def parse_command_line_args():
                         action='store_true',
                         help='Run scale calcs.')
 
-    return parser.parse_args()
-
-
-# Manage command line parameters
-def handle_command_line():
-    args = parse_command_line_args()
+    args = parser.parse_args()
 
     # Sim stage is always a list with 1 element, eg. ["all"], ['stage1'], ...
     args.sim = args.sim[0]
@@ -327,7 +322,7 @@ def validate_settings(args):
         raise ValueError(f'Invalid settings.default_grabbing_method "{settings.default_grabbing_method}"". Valid options: {valid_grabbing_methods}')
 
 
-def build_profile_simc_addon(args):
+def build_player_profile(args):
     valid_classes = ["priest",
                      "druid",
                      "warrior",
@@ -460,7 +455,7 @@ def get_subdir(stage):
     return subdir
 
 
-def grab_profiles(player_profile, stage, outputfile, stages):
+def grab_profiles_for_stage(player_profile, stage, outputfile, stages):
     """Parse output/result files from previous stage and get number of profiles to simulate"""
     subdir_previous_stage = get_subdir(stage - 1)
     if stage == 1:
@@ -484,7 +479,7 @@ def grab_profiles(player_profile, stage, outputfile, stages):
     return num_generated_profiles
 
 
-def check_profiles(stage):
+def check_profiles_from_stage(stage):
     subdir = get_subdir(stage)
     if not os.path.exists(subdir):
         return False
@@ -496,7 +491,7 @@ def check_profiles(stage):
     return len(files)
 
 
-def static_stage(player_profile, stage, scale, stages):
+def run_static_stage(player_profile, stage, scale, stages):
     if stage > stages:
         return
     logger.info('----------------------------------------------------')
@@ -509,16 +504,16 @@ def static_stage(player_profile, stage, scale, stages):
     if not num_iterations:
         raise ValueError(("Cannot run static mode and skip questions without default iterations set for stage {}.").format(stage))
     splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, scale)
-    static_stage(player_profile, stage + 1, scale, stages)
+    run_static_stage(player_profile, stage + 1, scale, stages)
 
 
-def dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, previous_target_error=None, stage=1):
+def run_dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, previous_target_error=None, stage=1):
     if stage > stages:
         return
     logger.info('----------------------------------------------------')
     logger.info(f"Entering dynamic mode, STAGE {stage}")
 
-    num_generated_profiles = grab_profiles(player_profile, stage, outputfile, stages)
+    num_generated_profiles = grab_profiles_for_stage(player_profile, stage, outputfile, stages)
 
     try:
         target_error = float(settings.default_target_error[stage])
@@ -535,7 +530,7 @@ def dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, sta
         logger.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
     is_last_stage = (stage == stages)
     splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, scale)
-    dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, target_error, stage + 1)
+    run_dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, target_error, stage + 1)
 
 
 def start_stage(player_profile, num_generated_profiles, stage, outputfile, scale, stages):
@@ -547,9 +542,9 @@ def start_stage(player_profile, num_generated_profiles, stage, outputfile, scale
     if mode_choice not in valid_modes:
         raise RuntimeError(f'Invalid simulation mode "{mode_choice}" selected. Valid modes: {valid_modes}.')
     if mode_choice == 1:
-        static_stage(player_profile, stage, scale, stages)
+        run_static_stage(player_profile, stage, scale, stages)
     elif mode_choice == 2:
-        dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, None, stage)
+        run_dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, None, stage)
     else:
         assert False
 
@@ -609,36 +604,28 @@ def main():
 
     logger.info(f'AutoSimC - Supported WoW-Version: {__version__}')
 
-    args = handle_command_line()
+    args = parse_command_line_args()
 
     logger.debug(f'Parsed command line arguments: {args}')
     logger.debug(f'Parsed settings: {vars(settings)}')
 
     validate_settings(args)
 
-    player_profile = build_profile_simc_addon(args)
+    player_profile = build_player_profile(args)
 
     # can always be rerun since it is now deterministic
-    output_generated = False
-    num_generated_profiles = None
     permutator = Permutator(args.additionalfile, logger, player_profile, args.gems, args.unique_jewelry, args.outputfile)
-    if args.sim == 'all' or args.sim is None:
-        start = datetime.datetime.now()
-        num_generated_profiles = permutator.permutate()
-        logger.debug(f'Permutating took {datetime.datetime.now() - start}.')
-        output_generated = True
-    elif args.sim == 'stage1':
-        num_generated_profiles = permutator.permutate()
-        output_generated = True
+    start = datetime.datetime.now()
+    num_generated_profiles = permutator.generate_permutations()
+    logger.debug(f'Permutating took {datetime.datetime.now() - start}.')
 
-    if output_generated:
-        if num_generated_profiles == 0:
-            raise RuntimeError(('No valid profile combinations found.'
-                                ' Please check the "Invalid profile statistics" output and adjust your'
-                                ' input.txt and settings.py.'))
-        if args.sim:
-            if num_generated_profiles and num_generated_profiles > 50000:
-                logger.warning('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
+    if num_generated_profiles == 0:
+        raise RuntimeError(('No valid profile combinations found.'
+                            ' Please check the "Invalid profile statistics" output and adjust your'
+                            ' input.txt and settings.py.'))
+    if args.sim:
+        if num_generated_profiles and num_generated_profiles > 1000:
+            logger.warning('Beware: Computation with Simcraft might take a VERY long time with this amount of profiles!')
 
     if args.sim:
         player_profile = add_fight_style(player_profile)

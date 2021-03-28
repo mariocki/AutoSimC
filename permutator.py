@@ -14,7 +14,6 @@ class Permutator:
     def __init__(self, additional_filename, logger, player_profile, gems, unique_jewelry, outputfile):
         self.additional_filename = additional_filename
         self.player_profile = player_profile
-        self.max_profile_chars = 0
         self.logger = logger
         self.gems = gems
         self.unique_jewelry = unique_jewelry
@@ -73,8 +72,8 @@ class Permutator:
         """Chop microseconds from a timedelta object"""
         return delta - datetime.timedelta(microseconds=delta.microseconds)
 
-    def _write_to_file(self, filehandler, valid_profile_number, additional_options, talents, items):
-        profile_name = str(valid_profile_number).rjust(self.max_profile_chars, "0")
+    def _write_to_file(self, filehandler, valid_profile_number, additional_options, talents, items, max_profile_chars):
+        profile_name = str(valid_profile_number).rjust(max_profile_chars, "0")
 
         filehandler.write("{}={}\n".format(self.player_profile.wow_class, str.replace(self.player_profile.profile_name, "\"", "")+"_"+profile_name))
         filehandler.write(self.player_profile.general_options)
@@ -202,196 +201,202 @@ class Permutator:
                 for items in self._product(*iterables[1:]):
                     yield (item,) + items
 
-    def permutate(self):
-        self.logger.info('Calculating Permutations...')
+    def generate_permutations(self):
 
-        parsed_gear = collections.OrderedDict({})
+        try:
 
-        gear = self.player_profile.simc_options.get('gear')
-        gear_in_bags = self.player_profile.simc_options.get('gearInBag')
+            self.logger.info('Calculating Permutations...')
 
-        # concatenate gear in bags to normal gear-list
-        for gear_in_bag in gear_in_bags:
-            if gear_in_bag in gear:
-                if len(gear[gear_in_bag]) > 0:
-                    current_gear = gear[gear_in_bag][0]
-                    if gear_in_bag == "finger" or gear_in_bag == "trinket":
-                        current_gear = current_gear + "|" + gear[gear_in_bag][1]
-                    for found_gear in gear_in_bags.get(gear_in_bag):
-                        current_gear = current_gear + '|' + found_gear
-                    gear[gear_in_bag] = current_gear
+            parsed_gear = collections.OrderedDict({})
 
-        for gear_slot in gear_slots:
-            slot_base_name = gear_slot[0]  # First mentioned "correct" item name
-            parsed_gear[slot_base_name] = []
-            for entry in gear_slot:
-                if entry in gear:
-                    if len(gear[entry]) > 0:
-                        for split_section in gear[entry].split('|'):
-                            parsed_gear[slot_base_name].append(Item(slot_base_name, split_section))
-            if len(parsed_gear[slot_base_name]) == 0:
-                # We havent found any items for that slot, add empty dummy item
-                parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
+            gear = self.player_profile.simc_options.get('gear')
+            gear_in_bags = self.player_profile.simc_options.get('gearInBag')
 
-        self.logger.debug(f'Parsed gear: {parsed_gear}')
+            # concatenate gear in bags to normal gear-list
+            for gear_in_bag in gear_in_bags:
+                if gear_in_bag in gear:
+                    if len(gear[gear_in_bag]) > 0:
+                        current_gear = gear[gear_in_bag][0]
+                        if gear_in_bag == "finger" or gear_in_bag == "trinket":
+                            current_gear = current_gear + "|" + gear[gear_in_bag][1]
+                        for found_gear in gear_in_bags.get(gear_in_bag):
+                            current_gear = current_gear + '|' + found_gear
+                        gear[gear_in_bag] = current_gear
 
-        if self.gems is not None:
-            splitted_gems = self._build_gem_list(self.gems)
+            for gear_slot in gear_slots:
+                slot_base_name = gear_slot[0]  # First mentioned "correct" item name
+                parsed_gear[slot_base_name] = []
+                for entry in gear_slot:
+                    if entry in gear:
+                        if len(gear[entry]) > 0:
+                            for split_section in gear[entry].split('|'):
+                                parsed_gear[slot_base_name].append(Item(slot_base_name, split_section))
+                if len(parsed_gear[slot_base_name]) == 0:
+                    # We havent found any items for that slot, add empty dummy item
+                    parsed_gear[slot_base_name] = [Item(slot_base_name, "")]
 
-        # Filter each slot to only have unique items, before doing any gem permutation.
-        for key, value in parsed_gear.items():
-            parsed_gear[key] = self._stable_unique(value)
+            self.logger.debug(f'Parsed gear: {parsed_gear}')
 
-        # This represents a dict of all options which will be permutated fully with itertools.product
-        normal_permutation_options = collections.OrderedDict({})
+            if self.gems is not None:
+                splitted_gems = self._build_gem_list(self.gems)
 
-        # Add talents to permutations
-        # l_talents = player_profile.config['Profile'].get("talents", "")
-        l_talents = self.player_profile.simc_options.get('talents')
-        talent_permutations = self._permutate_talents(l_talents)
+            # Filter each slot to only have unique items, before doing any gem permutation.
+            for key, value in parsed_gear.items():
+                parsed_gear[key] = self._stable_unique(value)
 
-        # Calculate max number of gem slots in equip. Will be used if we do gem permutations.
-        max_gem_slots = 0
-        if self.gems is not None:
-            for _slot, items in parsed_gear.items():
-                max_gem_on_item_slot = 0
-                for item in items:
-                    if len(item.gem_ids) > max_gem_on_item_slot:
-                        max_gem_on_item_slot = len(item.gem_ids)
-                max_gem_slots += max_gem_on_item_slot
+            # This represents a dict of all options which will be permutated fully with itertools.product
+            normal_permutation_options = collections.OrderedDict({})
 
-        # no gems on gear so no point calculating gem permutations
-        if max_gem_slots == 0:
-            self.gems = None
+            # Add talents to permutations
+            # l_talents = player_profile.config['Profile'].get("talents", "")
+            l_talents = self.player_profile.simc_options.get('talents')
+            talent_permutations = self._permutate_talents(l_talents)
 
-        # Add 'normal' gear to normal permutations, excluding trinket/rings
-        gear_normal = {k: v for k, v in parsed_gear.items() if (not k == 'finger' and not k == 'trinket')}
-        normal_permutation_options.update(gear_normal)
+            # Calculate max number of gem slots in equip. Will be used if we do gem permutations.
+            max_gem_slots = 0
+            if self.gems is not None:
+                for _slot, items in parsed_gear.items():
+                    max_gem_on_item_slot = 0
+                    for item in items:
+                        if len(item.gem_ids) > max_gem_on_item_slot:
+                            max_gem_on_item_slot = len(item.gem_ids)
+                    max_gem_slots += max_gem_on_item_slot
 
-        # Calculate normal permutations
-        normal_permutations = self._product(*normal_permutation_options.values())
-        self.logger.debug('Building permutations matrix finished.')
+            # no gems on gear so no point calculating gem permutations
+            if max_gem_slots == 0:
+                self.gems = None
 
-        special_permutations_config = {"finger": ("finger1", "finger2"),
-                                       "trinket": ("trinket1", "trinket2")
-                                       }
-        special_permutations = {}
-        for name, values in special_permutations_config.items():
-            # Get entries from parsed gear, exclude empty finger/trinket lines
-            entries = [v for k, v in parsed_gear.items() if k.startswith(name)]
-            entries = list(itertools.chain(*entries))
+            # Add 'normal' gear to normal permutations, excluding trinket/rings
+            gear_normal = {k: v for k, v in parsed_gear.items() if (not k == 'finger' and not k == 'trinket')}
+            normal_permutation_options.update(gear_normal)
 
-            # Remove empty (id=0) items from trinket/rings, except if there are 0 ring/trinkets specified. Then we need
-            # the single dummy item
-            remove_empty_entries = [item for item in entries if item.item_id != 0]
-            if len(remove_empty_entries):
-                entries = remove_empty_entries
+            # Calculate normal permutations
+            normal_permutations = self._product(*normal_permutation_options.values())
+            self.logger.debug('Building permutations matrix finished.')
 
-            self.logger.debug(f'Input list for special permutation "{name}": {entries}')
-            if self.unique_jewelry:
-                # Unique finger/trinkets.
-                permutations = itertools.combinations(entries, len(values))
-            else:
-                permutations = itertools.combinations_with_replacement(entries, len(values))
-            permutations = list(permutations)
-            for i, (item1, item2) in enumerate(permutations):
-                new_item1 = copy.deepcopy(item1)
-                new_item1.slot = values[0]
-                new_item2 = copy.deepcopy(item2)
-                new_item2.slot = values[1]
-                permutations[i] = (new_item1, new_item2)
+            special_permutations_config = {"finger": ("finger1", "finger2"),
+                                           "trinket": ("trinket1", "trinket2")
+                                           }
+            special_permutations = {}
+            for name, values in special_permutations_config.items():
+                # Get entries from parsed gear, exclude empty finger/trinket lines
+                entries = [v for k, v in parsed_gear.items() if k.startswith(name)]
+                entries = list(itertools.chain(*entries))
 
-            self.logger.debug(f'Got {len(permutations)} permutations for {name}.')
-            for permutation in permutations:
-                self.logger.debug(permutation)
+                # Remove empty (id=0) items from trinket/rings, except if there are 0 ring/trinkets specified. Then we need
+                # the single dummy item
+                remove_empty_entries = [item for item in entries if item.item_id != 0]
+                if len(remove_empty_entries):
+                    entries = remove_empty_entries
 
-            # Remove equal id's
-            if self.unique_jewelry:
-                permutations = [permutation for permutation in permutations if permutation[0].item_id != permutation[1].item_id]
-            self.logger.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
-            for permutation in permutations:
-                self.logger.debug(permutation)
+                self.logger.debug(f'Input list for special permutation "{name}": {entries}')
+                if self.unique_jewelry:
+                    # Unique finger/trinkets.
+                    permutations = itertools.combinations(entries, len(values))
+                else:
+                    permutations = itertools.combinations_with_replacement(entries, len(values))
+                permutations = list(permutations)
+                for i, (item1, item2) in enumerate(permutations):
+                    new_item1 = copy.deepcopy(item1)
+                    new_item1.slot = values[0]
+                    new_item2 = copy.deepcopy(item2)
+                    new_item2.slot = values[1]
+                    permutations[i] = (new_item1, new_item2)
 
-            # Make unique
-            permutations = self._stable_unique(permutations)
-            self.logger.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
-            for permutation in permutations:
-                self.logger.debug(permutation)
+                self.logger.debug(f'Got {len(permutations)} permutations for {name}.')
+                for permutation in permutations:
+                    self.logger.debug(permutation)
 
-            entry_dict = {v: None for v in values}
-            special_permutations[name] = [name, entry_dict, permutations]
+                # Remove equal id's
+                if self.unique_jewelry:
+                    permutations = [permutation for permutation in permutations if permutation[0].item_id != permutation[1].item_id]
+                self.logger.debug(f'Got {len(permutations)} permutations for {name} after id filter.')
+                for permutation in permutations:
+                    self.logger.debug(permutation)
 
-        # Calculate & Display number of permutations
-        max_nperm = 1
-        for name, perm in normal_permutation_options.items():
-            max_nperm *= len(perm)
-        permutations_product = {("normal gear&talents"): "{} ({})".format(max_nperm,
-                                                                          {name: len(items) for name, items in
-                                                                           normal_permutation_options.items()}
-                                                                          )
-                                }
+                # Make unique
+                permutations = self._stable_unique(permutations)
+                self.logger.debug(f'Got {len(permutations)} permutations for {name} after unique filter.')
+                for permutation in permutations:
+                    self.logger.debug(permutation)
 
-        for name, _entries, opt in special_permutations.values():
-            max_nperm *= len(opt)
-            permutations_product[name] = len(opt)
-        max_nperm *= len(talent_permutations)
-        gem_perms = 1
-        if self.gems is not None:
-            max_num_gems = max_gem_slots + len(splitted_gems)
-            gem_perms = len(list(itertools.combinations_with_replacement(range(max_gem_slots), max_num_gems)))
-            max_nperm *= gem_perms
-            permutations_product["gems"] = gem_perms
-        permutations_product["talents"] = len(talent_permutations)
-        self.logger.info(f'Max number of normal permutations: {max_nperm}')
-        self.logger.info(f'Number of permutations: {permutations_product}')
-        max_profile_chars = len(str(max_nperm))  # String length of max_nperm
+                entry_dict = {v: None for v in values}
+                special_permutations[name] = [name, entry_dict, permutations]
 
-        # Get Additional options string
-        additional_options = self._get_additional_input()
+            # Calculate & Display number of permutations
+            max_nperm = 1
+            for name, perm in normal_permutation_options.items():
+                max_nperm *= len(perm)
+            permutations_product = {("normal gear&talents"): "{} ({})".format(max_nperm,
+                                                                              {name: len(items) for name, items in
+                                                                               normal_permutation_options.items()}
+                                                                              )
+                                    }
 
-        # Start the permutation!
-        processed = 0
-        progress = 0  # Separate progress variable not counting gem and talent combinations
-        max_progress = max_nperm / gem_perms / len(talent_permutations)
-        valid_profiles = 0
-        start_time = datetime.datetime.now()
-        unusable_histogram = {}  # Record not usable reasons
-        with open(self.outputfile, 'w') as output_file:
-            for perm_normal in normal_permutations:
-                for perm_finger in special_permutations["finger"][2]:
-                    for perm_trinket in special_permutations["trinket"][2]:
-                        entries = perm_normal
-                        entries += perm_finger
-                        entries += perm_trinket
-                        items = {e.slot: e for e in entries if isinstance(e, Item)}
-                        # add gem-permutations to gear
-                        if self.gems is not None:
-                            gem_permutations = self._permutate_gems(items, splitted_gems)
-                        else:
-                            gem_permutations = (items,)
-                        if gem_permutations is not None:
-                            for gem_permutation in gem_permutations:
-                                # Permutate talents after is usable check, since it is independent of the talents
-                                for talent_permutation in talent_permutations:
-                                    # Additional talent usable check could be inserted here.
-                                    self._write_to_file(output_file, valid_profiles, additional_options, talent_permutation, gem_permutation)
-                                    valid_profiles += 1
-                                    processed += 1
-                        progress += 1
-                        self._print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
+            for name, _entries, opt in special_permutations.values():
+                max_nperm *= len(opt)
+                permutations_product[name] = len(opt)
+            max_nperm *= len(talent_permutations)
+            gem_perms = 1
+            if self.gems is not None:
+                max_num_gems = max_gem_slots + len(splitted_gems)
+                gem_perms = len(list(itertools.combinations_with_replacement(range(max_gem_slots), max_num_gems)))
+                max_nperm *= gem_perms
+                permutations_product["gems"] = gem_perms
+            permutations_product["talents"] = len(talent_permutations)
+            self.logger.info(f'Max number of normal permutations: {max_nperm}')
+            self.logger.info(f'Number of permutations: {permutations_product}')
+            max_profile_chars = len(str(max_nperm))  # String length of max_nperm
 
-        result = (f'Finished permutations. Valid: {valid_profiles:n} of {processed:n} processed. ({100.0 * valid_profiles / max_nperm if max_nperm else 0.0:.2f}%)')
-        self.logger.info(result)
+            # Get Additional options string
+            additional_options = self._get_additional_input()
 
-        # Not usable histogram debug output
-        unusable_string = []
-        for key, value in unusable_histogram.items():
-            unusable_string.append(f'{key:40s}: {value:12b} ({value * 100.0 / max_nperm if max_nperm else 0.0:5.2f}%)')
-        if len(unusable_string) > 0:
-            self.logger.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
+            # Start the permutation!
+            processed = 0
+            progress = 0  # Separate progress variable not counting gem and talent combinations
+            max_progress = max_nperm / gem_perms / len(talent_permutations)
+            valid_profiles = 0
+            start_time = datetime.datetime.now()
+            unusable_histogram = {}  # Record not usable reasons
+            with open(self.outputfile, 'w') as output_file:
+                for perm_normal in normal_permutations:
+                    for perm_finger in special_permutations["finger"][2]:
+                        for perm_trinket in special_permutations["trinket"][2]:
+                            entries = perm_normal
+                            entries += perm_finger
+                            entries += perm_trinket
+                            items = {e.slot: e for e in entries if isinstance(e, Item)}
+                            # add gem-permutations to gear
+                            if self.gems is not None:
+                                gem_permutations = self._permutate_gems(items, splitted_gems)
+                            else:
+                                gem_permutations = (items,)
+                            if gem_permutations is not None:
+                                for gem_permutation in gem_permutations:
+                                    # Permutate talents after is usable check, since it is independent of the talents
+                                    for talent_permutation in talent_permutations:
+                                        # Additional talent usable check could be inserted here.
+                                        self._write_to_file(output_file, valid_profiles, additional_options, talent_permutation, gem_permutation, max_profile_chars)
+                                        valid_profiles += 1
+                                        processed += 1
+                            progress += 1
+                            self._print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars, progress, max_progress)
 
-        # Print checksum so we can check for equality when making changes in the code
-        outfile_checksum = self._file_checksum(self.outputfile)
-        self.logger.info(f'Output file checksum: {outfile_checksum}')
+            result = (f'Finished permutations. Valid: {valid_profiles:n} of {processed:n} processed. ({100.0 * valid_profiles / max_nperm if max_nperm else 0.0:.2f}%)')
+            self.logger.info(result)
 
-        return valid_profiles
+            # Not usable histogram debug output
+            unusable_string = []
+            for key, value in unusable_histogram.items():
+                unusable_string.append(f'{key:40s}: {value:12b} ({value * 100.0 / max_nperm if max_nperm else 0.0:5.2f}%)')
+            if len(unusable_string) > 0:
+                self.logger.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
+
+            # Print checksum so we can check for equality when making changes in the code
+            outfile_checksum = self._file_checksum(self.outputfile)
+            self.logger.info(f'Output file checksum: {outfile_checksum}')
+
+            return valid_profiles
+        except Exception() as ex:
+            self.logger.error(f'Exception during permutation {ex}')
+            return 0

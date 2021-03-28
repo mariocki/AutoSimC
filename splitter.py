@@ -77,16 +77,14 @@ def split(inputfile, destination_folder, size, wow_class):
             profile.append('')  # Add tailing empty line
             bestprofiles.append("\n".join(profile))
             if len(bestprofiles) >= size:
-                outfile = os.path.join(
-                    destination_folder, 'sim' + str(outfile_count) + '.simc')
+                outfile = os.path.join(destination_folder, 'sim' + str(outfile_count) + '.simc')
                 _dump_profiles_to_file(outfile, bestprofiles)
                 num_profiles += len(bestprofiles)
                 bestprofiles.clear()
                 outfile_count += 1
     # Write tail
     if len(bestprofiles):
-        outfile = os.path.join(destination_folder, 'sim' +
-                               str(outfile_count) + '.simc')
+        outfile = os.path.join(destination_folder, 'sim' + str(outfile_count) + '.simc')
         _dump_profiles_to_file(outfile, bestprofiles)
         outfile_count += 1
         num_profiles += len(bestprofiles)
@@ -106,8 +104,7 @@ def _prepare_fight_style(player_profile, cmd):
             for entry in player_profile.fightstyle:
                 if entry.startswith("line"):
                     file.write(player_profile.fightstyle[entry]+"\n")
-            cmd.append('input=' + os.path.join(os.getcwd(),
-                       settings.additional_input_file))
+            cmd.append('input=' + os.path.join(os.getcwd(), settings.additional_input_file))
     return cmd
 
 
