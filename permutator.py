@@ -11,14 +11,14 @@ from staticdata import gear_slots, gem_ids
 class Permutator:
     """Data for each permutation"""
 
-    def __init__(self, additional_filename, logger, player_profile, gems, unique_jewelry, output_filename):
+    def __init__(self, additional_filename, logger, player_profile, gems, unique_jewelry, outputfile):
         self.additional_filename = additional_filename
         self.player_profile = player_profile
         self.max_profile_chars = 0
         self.logger = logger
         self.gems = gems
         self.unique_jewelry = unique_jewelry
-        self.output_filename = output_filename
+        self.outputfile = outputfile
 
     def _get_gem_combinations(self, gems_to_use, num_gem_slots):
         if num_gem_slots <= 0:
@@ -356,7 +356,7 @@ class Permutator:
         valid_profiles = 0
         start_time = datetime.datetime.now()
         unusable_histogram = {}  # Record not usable reasons
-        with open(self.output_filename, 'w') as output_file:
+        with open(self.outputfile, 'w') as output_file:
             for perm_normal in normal_permutations:
                 for perm_finger in special_permutations["finger"][2]:
                     for perm_trinket in special_permutations["trinket"][2]:
@@ -391,7 +391,7 @@ class Permutator:
             self.logger.info(('Invalid profile statistics: [\n{}]').format("\n".join(unusable_string)))
 
         # Print checksum so we can check for equality when making changes in the code
-        outfile_checksum = self._file_checksum(self.output_filename)
+        outfile_checksum = self._file_checksum(self.outputfile)
         self.logger.info(f'Output file checksum: {outfile_checksum}')
 
         return valid_profiles

@@ -23,11 +23,6 @@ except ImportError:
 
 __version__ = "9.0.1"
 
-OUTPUT_FILENAME = settings.default_outputFileName
-ADDITIONAL_FILENAME = settings.default_additionalFileName
-NUM_STAGES = settings.num_stages
-SCALE = settings.simc_scale_factors_last_stage
-
 # Global logger instance
 logger = logging.getLogger()
 if logger.hasHandlers():
@@ -161,19 +156,6 @@ def handle_command_line():
     args.sim = args.sim[0]
     if args.sim == 'permutate_only':
         args.sim = None
-
-    # override the globals with th arg values
-    global OUTPUT_FILENAME
-    OUTPUT_FILENAME = args.outputfile
-
-    global ADDITIONAL_FILENAME
-    ADDITIONAL_FILENAME = args.additionalfile
-
-    global NUM_STAGES
-    NUM_STAGES = args.stages
-
-    global SCALE
-    SCALE = args.scale
 
     return args
 
@@ -315,9 +297,9 @@ def copy_result_file(last_subdir):
         logger.warning(f'Could not copy html result file, since there was no file found in "{last_subdir}".')
 
 
-def cleanup():
+def cleanup(stages):
     logger.debug('Cleaning up')
-    subdirs = [get_subdir(stage) for stage in range(1, NUM_STAGES + 1)]
+    subdirs = [get_subdir(stage) for stage in range(1, stages + 1)]
     copy_result_file(subdirs[-1])
     for subdir in subdirs:
         cleanup_subdir(subdir)
@@ -478,11 +460,11 @@ def get_subdir(stage):
     return subdir
 
 
-def grab_profiles(player_profile, stage):
+def grab_profiles(player_profile, stage, outputfile, stages):
     """Parse output/result files from previous stage and get number of profiles to simulate"""
     subdir_previous_stage = get_subdir(stage - 1)
     if stage == 1:
-        num_generated_profiles = splitter.split(OUTPUT_FILENAME, get_subdir(stage), settings.splitting_size, player_profile.wow_class)
+        num_generated_profiles = splitter.split(outputfile, get_subdir(stage), settings.splitting_size, player_profile.wow_class)
     else:
         try:
             check_results_file(subdir_previous_stage)
@@ -494,9 +476,9 @@ def grab_profiles(player_profile, stage):
             filter_criterium = None
         elif settings.default_grabbing_method == 'top_n':
             filter_by = 'count'
-            filter_criterium = settings.default_top_n[stage - NUM_STAGES - 1]
-        is_last_stage = (stage == NUM_STAGES)
-        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), OUTPUT_FILENAME, not is_last_stage)
+            filter_criterium = settings.default_top_n[stage - stages - 1]
+        is_last_stage = (stage == stages)
+        num_generated_profiles = splitter.grab_best(filter_by, filter_criterium, subdir_previous_stage, get_subdir(stage), outputfile, not is_last_stage)
     if num_generated_profiles:
         logger.info(f'Found {num_generated_profiles} profile(s) to simulate.')
     return num_generated_profiles
@@ -514,29 +496,29 @@ def check_profiles(stage):
     return len(files)
 
 
-def static_stage(player_profile, stage):
-    if stage > NUM_STAGES:
+def static_stage(player_profile, stage, scale, stages):
+    if stage > stages:
         return
     logger.info('----------------------------------------------------')
     logger.info(f'***Entering static mode, STAGE {stage}***')
-    is_last_stage = (stage == NUM_STAGES)
+    is_last_stage = (stage == stages)
     try:
         num_iterations = settings.default_iterations[stage]
     except Exception:
         num_iterations = None
     if not num_iterations:
         raise ValueError(("Cannot run static mode and skip questions without default iterations set for stage {}.").format(stage))
-    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, SCALE)
-    static_stage(player_profile, stage + 1)
+    splitter.simulate(get_subdir(stage), "iterations", num_iterations, player_profile, stage, is_last_stage, scale)
+    static_stage(player_profile, stage + 1, scale, stages)
 
 
-def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=None, stage=1):
-    if stage > NUM_STAGES:
+def dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, previous_target_error=None, stage=1):
+    if stage > stages:
         return
     logger.info('----------------------------------------------------')
     logger.info(f"Entering dynamic mode, STAGE {stage}")
 
-    num_generated_profiles = grab_profiles(player_profile, stage)
+    num_generated_profiles = grab_profiles(player_profile, stage, outputfile, stages)
 
     try:
         target_error = float(settings.default_target_error[stage])
@@ -551,12 +533,12 @@ def dynamic_stage(player_profile, num_generated_profiles, previous_target_error=
     # he is given an option to adjust it.
     if previous_target_error is not None and previous_target_error <= target_error:
         logger.warning(f'Warning Target_Error chosen in stage {stage - 1}: {previous_target_error} <= Default_Target_Error for stage {stage}: {target_error}')
-    is_last_stage = (stage == NUM_STAGES)
-    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, SCALE)
-    dynamic_stage(player_profile, num_generated_profiles, target_error, stage + 1)
+    is_last_stage = (stage == stages)
+    splitter.simulate(get_subdir(stage), "target_error", target_error, player_profile, stage, is_last_stage, scale)
+    dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, target_error, stage + 1)
 
 
-def start_stage(player_profile, num_generated_profiles, stage):
+def start_stage(player_profile, num_generated_profiles, stage, outputfile, scale, stages):
     logger.info('----------------------------------------------------')
     logger.info(f'Starting at stage {stage}')
     logger.info(f'You selected grabbing method "{settings.default_grabbing_method}".')
@@ -565,9 +547,9 @@ def start_stage(player_profile, num_generated_profiles, stage):
     if mode_choice not in valid_modes:
         raise RuntimeError(f'Invalid simulation mode "{mode_choice}" selected. Valid modes: {valid_modes}.')
     if mode_choice == 1:
-        static_stage(player_profile, stage)
+        static_stage(player_profile, stage, scale, stages)
     elif mode_choice == 2:
-        dynamic_stage(player_profile, num_generated_profiles, None, stage)
+        dynamic_stage(player_profile, num_generated_profiles, outputfile, scale, stages, None, stage)
     else:
         assert False
 
@@ -639,7 +621,7 @@ def main():
     # can always be rerun since it is now deterministic
     output_generated = False
     num_generated_profiles = None
-    permutator = Permutator(ADDITIONAL_FILENAME, logger, player_profile, args.gems, args.unique_jewelry, args.outputfile)
+    permutator = Permutator(args.additionalfile, logger, player_profile, args.gems, args.unique_jewelry, args.outputfile)
     if args.sim == 'all' or args.sim is None:
         start = datetime.datetime.now()
         num_generated_profiles = permutator.permutate()
@@ -661,14 +643,14 @@ def main():
     if args.sim:
         player_profile = add_fight_style(player_profile)
         if args.sim == 'stage1' or args.sim == 'all':
-            start_stage(player_profile, num_generated_profiles, 1)
+            start_stage(player_profile, num_generated_profiles, 1, args.outputfile, args.scale, args.stages)
         if args.sim == 'stage2':
-            start_stage(player_profile, None, 2)
+            start_stage(player_profile, None, 2, args.outputfile, args.scale, args.stages)
         if args.sim == 'stage3':
-            start_stage(player_profile, None, 3)
+            start_stage(player_profile, None, 3, args.outputfile, args.scale, args.stages)
 
         if settings.clean_up:
-            cleanup()
+            cleanup(args.stages)
     logger.info('AutoSimC finished correctly.')
 
 
