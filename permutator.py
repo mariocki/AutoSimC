@@ -274,9 +274,7 @@ class Permutator:
             normal_permutations = self._product(*normal_permutation_options.values())
             self.logger.debug('Building permutations matrix finished.')
 
-            special_permutations_config = {"finger": ("finger1", "finger2"),
-                                           "trinket": ("trinket1", "trinket2")
-                                           }
+            special_permutations_config = {"finger": ("finger1", "finger2"), "trinket": ("trinket1", "trinket2")}
             special_permutations = {}
             for name, values in special_permutations_config.items():
                 # Get entries from parsed gear, exclude empty finger/trinket lines
@@ -327,11 +325,7 @@ class Permutator:
             max_nperm = 1
             for name, perm in normal_permutation_options.items():
                 max_nperm *= len(perm)
-            permutations_product = {("normal gear&talents"): "{} ({})".format(max_nperm,
-                                                                              {name: len(items) for name, items in
-                                                                               normal_permutation_options.items()}
-                                                                              )
-                                    }
+            permutations_product = {("normal gear&talents"): "{} ({})".format(max_nperm, {name: len(items) for name, items in normal_permutation_options.items()})}
 
             for name, _entries, opt in special_permutations.values():
                 max_nperm *= len(opt)

@@ -49,20 +49,15 @@ def parse_command_line_args():
     """Parse command line arguments using argparse. Also provides --help functionality, and default values for args"""
 
     parser = argparse.ArgumentParser(prog="AutoSimC",
-                                     description=("Python script to create multiple profiles for SimulationCraft to "
-                                                  "find Best-in-Slot and best enchants/gems/talents combinations."),
-                                     epilog=("Don't hesitate to go on the SimcMinMax Discord "
-                                             "(https://discordapp.com/invite/tFR2uvK) "
-                                             "in the #simpermut-autosimc Channel to ask about specific stuff."),
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter  # Show default arguments
-                                     )
+                                     description=("Python script to create multiple profiles for SimulationCraft to find Best-in-Slot and best enchants/gems/talents combinations."),
+                                     epilog=("Don't hesitate to go on the SimcMinMax Discord (https://discordapp.com/invite/tFR2uvK) in the #simpermut-autosimc Channel to ask about specific stuff."),
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('-i', '--inputfile',
                         dest="inputfile",
                         default=settings.default_inputFileName,
                         required=False,
-                        help=("Inputfile describing the permutation of SimC profiles to generate. See README for more "
-                              "details."))
+                        help=("Inputfile describing the permutation of SimC profiles to generate. See README for more details."))
 
     parser.add_argument('-o', '--outputfile',
                         dest="outputfile",
@@ -81,8 +76,7 @@ def parse_command_line_args():
                         required=False,
                         nargs=1,
                         default=[settings.default_sim_start_stage],
-                        choices=['permutate_only', 'all', 'stage1', 'stage2', 'stage3', 'stage4',
-                                 'stage5', 'stage6'],
+                        choices=['permutate_only', 'all', 'stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage6'],
                         help=("Enables automated simulation and ranking for the top 3 dps-gear-combinations. "
                               "Might take a long time, depending on number of permutations. "
                               "Edit the simcraft-path in settings.py to point to your simc-installation. The result.html "
@@ -100,8 +94,7 @@ def parse_command_line_args():
                               "stage1, by launching with the parameter -sim stage1 (or stage2/3)."
                               "- Parallel Processing: By default multiple simc-instances are launched for stage1 and 2, "
                               "which is a major speedup on modern multicore-cpus like AMD Ryzen. If you encounter problems "
-                              "or instabilities, edit settings.py and change the corresponding parameters or even disable it.")
-                        )
+                              "or instabilities, edit settings.py and change the corresponding parameters or even disable it."))
 
     parser.add_argument('-stages', '--stages',
                         dest="stages",
@@ -172,8 +165,7 @@ def fetch_from_wowhead(item_details, ilvl):
         return json_string
 
     try:
-        hdr = {'Accept': 'text/html,application/xhtml+xml,*/*',
-               "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"}
+        hdr = {'Accept': 'text/html,application/xhtml+xml,*/*', "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"}
         url = f'https://www.wowhead.com/item={item_details["id"]}&xml'
         if "bonus_id" in item_details:
             bonus_id = item_details["bonus_id"].replace('/', ':')
@@ -483,8 +475,7 @@ def check_profiles_from_stage(stage):
     subdir = get_subdir(stage)
     if not os.path.exists(subdir):
         return False
-    files = os.listdir(subdir
-                       )
+    files = os.listdir(subdir)
     files = [f for f in files if f.endswith(".simc")]
     files = [f for f in files if not f.endswith("arguments.simc")]
     files = [f for f in files if os.stat(os.path.join(subdir, f)).st_size > 0]
@@ -561,9 +552,7 @@ def check_interpreter():
         if minor >= required_minor:
             return
     raise RuntimeError(("Python-Version too old! You are running Python {}. Please install at least "
-                        "Python-Version {}.{}.x").format(sys.version,
-                                                         required_major,
-                                                         required_minor))
+                        "Python-Version {}.{}.x").format(sys.version, required_major, required_minor))
 
 
 def add_fight_style(profile):

@@ -13,12 +13,4 @@ gear_slots = [("head",),
               ("main_hand",),
               ("off_hand",)]
 
-gem_ids = {"16haste": 311865,
-           "haste": 311865,  # always contains available maximum quality
-           "16crit": 311863,
-           "crit": 311863,  # always contains available maximum quality
-           "16vers": 311859,
-           "vers": 311859,  # always contains available maximum quality
-           "16mast": 311864,
-           "mast": 311864,  # always contains available maximum quality
-           }
+gem_ids = {"16haste": 311865, "haste": 311865, "16crit": 311863, "crit": 311863, "16vers": 311859, "vers": 311859, "16mast": 311864, "mast": 311864}
