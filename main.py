@@ -591,6 +591,8 @@ def main():
     # check version of python-interpreter running the script
     check_interpreter()
 
+    start = datetime.datetime.now()
+
     logger.info(f'AutoSimC - Supported WoW-Version: {__version__}')
 
     args = parse_command_line_args()
@@ -625,8 +627,10 @@ def main():
         if args.sim == 'stage3':
             start_stage(player_profile, None, 3, args.outputfile, args.scale, args.stages)
 
-        if settings.clean_up:
-            cleanup(args.stages)
+    end = datetime.datetime.now()
+    if settings.clean_up:
+        cleanup(args.stages)
+    logger.info(f'Total simulation took {end - start}.')
     logger.info('AutoSimC finished correctly.')
 
 
