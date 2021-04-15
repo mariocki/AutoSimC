@@ -105,7 +105,7 @@ class settings():
     # Error Rate Multiplier / Confidence Range
     # change this to widen/narrow the interval of profiles taken into account for the next stage
     # use 1.96 for 95% confidence or 2.58 for 99% confidence
-    default_error_rate_multiplier = 1.96
+    default_error_rate_multiplier = 2.58
 
     # Patchwerk, LightMovement, HeavyMovement, HelterSkelter, HecticAddCleave, Ultraxion, Beastlord, CastingPatchwerk
     # https://github.com/simulationcraft/simc/wiki/RaidEvents
