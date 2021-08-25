@@ -1,3 +1,6 @@
+# pylint: disable=C0103
+# pylint: disable=C0301
+
 import sys
 import datetime
 import os
@@ -6,22 +9,118 @@ import shutil
 import argparse
 import logging
 from urllib.error import URLError
-from urllib.request import urlopen, Request
-import xml.etree.ElementTree as ET
-from profile import Profile
-from termcolor import colored
-import coloredlogs
-from permutator import Permutator
-import splitter
-import specdata
-from staticdata import gear_slots, gem_ids
+from urllib.request import urlopen, urlretrieve
+import platform
+from enum import Enum, auto
+
+import AddonImporter
+import locale
+
+from settings import settings
 
 try:
     from settings_local import settings
 except ImportError:
     from settings import settings
 
-__version__ = "9.0.1"
+__version__ = "9.1.0"
+
+import gettext
+
+gettext.install('AutoSimC')
+translator = gettext.translation('AutoSimC', fallback=True)
+
+# Items to parse. First entry is the "correct" name
+gear_slots = [("head",),
+              ("neck",),
+              ("shoulder", "shoulders"),
+              ("back",),
+              ("chest",),
+              ("wrist", "wrists"),
+              ("hands",),
+              ("waist",),
+              ("legs",),
+              ("feet",),
+              ("finger", "finger1", "finger2"),
+              ("trinket", "trinket1", "trinket2",),
+              ("main_hand",),
+              ("off_hand",)]
+
+shadowlands_legendary_ids = [171412, 171413, 171414, 171415, 171416, 171417, 171418, 171419,            #plate
+                             172314, 172315, 172316, 172317, 172318, 172319, 172320, 172321,            #leather
+                             172322, 172323, 172324, 172325, 172326, 172327, 172328, 172329,            #mail
+                             173241, 173242, 173243, 173244, 173245, 173246, 173247, 173248, 173249,    #cloth
+                             178926, 178927                                                             #ring, neck
+                             ]
+
+class WeaponType(Enum):
+    DUMMY = -1
+    ONEHAND = 13
+    SHIELD = 14
+    BOW = 15
+    TWOHAND = 17
+    OFFHAND_WEAPON = 21
+    OFFHAND_SPECIAL_WEAPON = 22
+    OFFHAND = 23
+    GUN = 26
+
+
+class TranslatedText(str):
+    """Represents a translatable text string, while also keeping a reference to the original (englisch) string"""
+
+    def __new__(cls, message, translate=True):
+        if translate:
+            return super(TranslatedText, cls).__new__(cls, translator.gettext(message))
+        else:
+            return super(TranslatedText, cls).__new__(cls, message)
+
+    def __init__(self, message, translate=True):
+        self.original_message = message
+
+    def format(self, *args, **kwargs):
+        s = TranslatedText(str.format(self, *args, **kwargs), translate=False)
+        s.original_message = str.format(self.original_message, *args, **kwargs)
+        return s
+
+
+_ = TranslatedText
+
+
+def install_translation():
+    # Based on: (1) https://docs.python.org/3/library/gettext.html
+    # (2) https://inventwithpython.com/blog/2014/12/20/translate-your-python-3-program-with-the-gettext-module/
+    # Also see Readme.md#Localization for more info
+    if settings.localization_language == "auto":
+        # get the default locale using the locale module
+        default_lang, _default_enc = locale.getdefaultlocale()
+    else:
+        default_lang = settings.localization_language
+    try:
+        if default_lang is not None:
+            default_lang = [default_lang]
+        lang = gettext.translation('AutoSimC', localedir='locale', languages=default_lang)
+        lang.install()
+        global translator
+        translator = lang
+    except FileNotFoundError:
+        print("No translation for {} available.".format(default_lang))
+
+
+install_translation()
+
+# Var init with default value
+t27min = int(settings.default_equip_t27_min)
+t27max = int(settings.default_equip_t27_max)
+
+gem_ids = {"16haste": 311865,
+           "haste": 311865,  # always contains available maximum quality
+           "16crit": 311863,
+           "crit": 311863,  # always contains available maximum quality
+           "16vers": 311859,
+           "vers": 311859,  # always contains available maximum quality
+           "16mast": 311864,
+           "mast": 311864,  # always contains available maximum quality
+           }
 
 # Global logger instance
 logger = logging.getLogger()
@@ -41,8 +140,45 @@ stdout_handler.setFormatter(color_formatter)
 logger.addHandler(stdout_handler)
 
 
-def str2bool(value):
-    return value.lower() in ('yes', 'true', 't', '1', 'y')
+def get_additional_input():
+    input_encoding = 'utf-8'
+    options = []
+    try:
+        with open(additionalFileName, "r", encoding=input_encoding) as f:
+            for line in f:
+                if not line.startswith("#"):
+                    options.append(line)
+
+    except UnicodeDecodeError as e:
+        raise RuntimeError("""AutoSimC could not decode your additional input file '{file}' with encoding '{enc}'.
+        Please make sure that your text editor encodes the file as '{enc}',
+        or as a quick fix remove any special characters from your character name.""".format(file=additionalFileName,
+                                                                                            enc=input_encoding)) from e
+
+    return "".join(options)
+
+
+def build_gem_list(gem_lists):
+    """Build list of unique gem ids from --gems argument"""
+    sorted_gem_list = []
+    for gems in gem_lists:
+        splitted_gems = gems.split(",")
+        for gem in splitted_gems:
+            if gem not in gem_ids.keys():
+                raise ValueError("Unknown gem '{}' to sim, please check your input. Valid gems: {}".
+                                 format(gem, gem_ids.keys()))
+        # Convert parsed gems to list of gem ids
+        gems = [gem_ids[gem] for gem in splitted_gems]
+
+        # Unique by gem id, so that if user specifies eg. 200haste,haste there will only be 1 gem added.
+        gems = stable_unique(gems)
+        sorted_gem_list += gems
+    logging.debug("Parsed gem list to permutate: {}".format(sorted_gem_list))
+    return sorted_gem_list
+
+
+def str2bool(v):
+    return v.lower() in ("yes", "true", "t", "1")
 
 
 def parse_command_line_args():
@@ -148,10 +284,66 @@ def parse_command_line_args():
     return args
 
 
-def cleanup_subdir(subdir):
-    if os.path.exists(subdir):
-        logger.debug(f'Removing subdir "{subdir}".')
-        shutil.rmtree(subdir)
+def get_analyzer_data(class_spec):
+    """
+    Get precomputed analysis data (target_error, iterations, elapsed_time_seconds) for a given class_spec
+    """
+    result = []
+    filename = os.path.join(os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
+    with open(filename, "r") as f:
+        file = json.load(f)
+        for variant in file[0]:
+            for p in variant["playerdata"]:
+                if p["specialization"] == class_spec:
+                    for s in range(len(p["specdata"])):
+                        item = (float(variant["target_error"]),
+                                int(p["specdata"][s]["iterations"]),
+                                float(p["specdata"][s]["elapsed_time_seconds"])
+                                )
+                        result.append(item)
+    return result
+
+
+def determineSimcVersionOnDisc():
+    """gets the version of our simc installation on disc"""
+    try:
+        p = subprocess.run([settings.simc_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        match = None
+        for raw_line in p.stdout.decode():
+            decoded_line = raw_line
+            try:
+                # git build <branch> <git-ref>
+                match = re.search(r'git build \S* (\S+)\)', decoded_line).group(1)
+                if match:
+                    logging.debug(_("Found program in {}: Git_Version: {}")
+                                  .format(settings.simc_path,
+                                          match))
+                    return match
+            except AttributeError:
+                # should only contain other lines from simc_standard-output
+                pass
+        if match is None:
+            logging.info(_("Found no git-string in simc.exe, self-compiled?"))
+    except FileNotFoundError:
+        logging.info(_("Did not find program in '{}'.").format(settings.simc_path))
+
+
+def determineLatestSimcVersion():
+    """gets the version of the latest binaries available on the net"""
+    try:
+        html = urlopen('http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
+    except URLError:
+        logging.info("Could not access download directory on simulationcraft.org")
+    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
+    filename = list(filter(None, re.findall(r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
+    head, _tail = os.path.splitext(filename)
+    latest_git_version = head.split("-")[-1]
+    logging.debug(_("Latest version available: {}").format(latest_git_version))
+
+    if not len(latest_git_version):
+        logging.info(_("Found no git-string in filename, new or changed format?"))
+
+    return (filename, latest_git_version)
 
 
 def fetch_from_wowhead(item_details, ilvl):
@@ -165,100 +357,61 @@ def fetch_from_wowhead(item_details, ilvl):
         return json_string
 
     try:
-        hdr = {'Accept': 'text/html,application/xhtml+xml,*/*', "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36"}
-        url = f'https://www.wowhead.com/item={item_details["id"]}&xml'
-        if "bonus_id" in item_details:
-            bonus_id = item_details["bonus_id"].replace('/', ':')
-            url = url + f'&bonus={bonus_id}'
-        if "enchant_id" in item_details:
-            url = url + f'&ench={item_details["enchant_id"]}'
-        if ilvl != 0:
-            url = url + f'&ilvl={ilvl}'
+        html = urlopen('http://downloads.simulationcraft.org/nightly/?C=M;O=D').read().decode('utf-8')
+    except URLError:
+        logging.info("Could not access download directory on simulationcraft.org")
+    # filename = re.search(r'<a href="(simc.+win64.+7z)">', html).group(1)
+    filename = list(filter(None, re.findall(r'.+nonetwork.+|<a href="(simc.+win64.+7z)">', html)))[0]
+    print(_("Latest simc: {filename}").format(filename=filename))
 
-        req = Request(url, headers=hdr)
-        with urlopen(req) as socket:
-            xml = socket.read().decode('UTF-8')
-        root = ET.fromstring(xml)
-        item_json = json.loads('{' + root.find('item/json').text + '}')
-        # set the ilvl and quality in the JSON from the XML
-        item_json["quality"] = int(root.find('item/quality').attrib["id"])
-        item_json["level"] = int(root.find('item/level').text)
-        json_string = json.dumps(item_json)
-        with open(filename, "w") as file_pointer:
-            file_pointer.write(json_string)
-        return json_string
-    except URLError as ex:
-        logger.warning(f'Could not access download from wowhead {ex.reason}')
-        return ""
+    # Download latest build of simc
+    filepath = os.path.join(download_dir, filename)
+    if not os.path.exists(filepath):
+        url = 'http://downloads.simulationcraft.org/nightly/' + filename
+        logging.info(_("Retrieving simc from url {} to {}.").format(url,
+                                                                    filepath))
+        urlretrieve(url, filepath)
+    else:
+        logging.debug(_("Latest simc version already downloaded at {}.").format(filename))
 
+    # Unpack downloaded build and set simc_path
+    settings.simc_path = os.path.join(download_dir, filename[:filename.find(".7z")][:-8], "simc.exe")
+    splitter.simc_path = settings.simc_path
+    if not os.path.exists(settings.simc_path):
+        seven_zip_executables = ["7z.exe", "C:/Program Files/7-Zip/7z.exe"]
+        for seven_zip_executable in seven_zip_executables:
+            try:
+                if not os.path.exists(seven_zip_executable):
+                    logging.info(_("7Zip executable at '{}' does not exist.").format(seven_zip_executable))
+                    continue
+                cmd = seven_zip_executable + ' x "' + filepath + '" -aoa -o"' + download_dir + '"'
+                logging.debug(_("Running unpack command '{}'").format(cmd))
+                subprocess.call(cmd)
 
-item_colors = {
-    0: lambda x: colored(x.replace('_', ' ').title(), 'grey'),
-    1: lambda x: colored(x.replace('_', ' ').title(), 'white'),
-    2: lambda x: colored(x.replace('_', ' ').title(), 'green'),
-    3: lambda x: colored(x.replace('_', ' ').title(), 'blue'),
-    4: lambda x: colored(x.replace('_', ' ').title(), 'magenta'),
-    5: lambda x: colored(x.replace('_', ' ').title(), 'yellow')
-}
-
-stat_names = {
-    "Str": "Strength",
-    "Agi": "Agility",
-    "Sta": "Stamina",
-    "Int": "Intellect",
-    "SP": "SpellPower",
-    "AP": "Ap",
-    "Crit": "CritRating",
-    "Haste": "HasteRating",
-    "Mastery": "MasteryRating",
-    "Vers": "Versatility",
-    "Wdps": "Dps",
-    "WOHdps": "OffHandDps",
-    "Armor": "Armor",
-    "Bonusarmor": "BonusArmor",
-    "Leech": "Leech",
-    "Runspeed": "RunSpeed",
-    "Latency": "Latency"
-}
+                # keep the latest 7z to remember current version, but clean up any other ones
+                files = glob.glob(download_dir + '/simc*win64*7z')
+                for f in files:
+                    if not os.path.basename(f) == filename:
+                        print(_("Removing old simc from '{}'.").format(os.path.basename(f)))
+                        os.remove(f)
+                break
+            except Exception as e:
+                print(_("Exception when unpacking: {}").format(e))
+        else:
+            raise RuntimeError(_("Could not unpack the auto downloaded SimulationCraft executable."
+                                 "Please note that you need 7Zip installed at one of the following locations: {}.").
+                               format(seven_zip_executables))
+    else:
+        print(_("Simc already exists at '{}'.").format(repr(settings.simc_path)))
 
 
-def print_best(filename):
-    with open(filename) as file_pointer:
-        results = json.load(file_pointer)
-    current_best_dps = 0
-    current_best_index = ""
-
-    for player in results["sim"]["players"]:
-        if player["collected_data"]["dpse"]["mean"] > current_best_dps:
-            current_best_dps = player["collected_data"]["dpse"]["mean"]
-            current_best_index = player["name"]
-
-    print(colored(current_best_index.upper().split('_')[0], 'green'), colored(f'{current_best_dps:8.0f}', 'red'))
-
-    for player in results["sim"]["players"]:
-        if player["name"] == current_best_index:
-            # print out the gear
-            for slot, item in player["gear"].items():
-                item_details = dict(x.split("=") for x in ('name=' + item["encoded_item"]).split(','))
-
-                json_string = fetch_from_wowhead(item_details, item["ilevel"])
-                item_json = json.loads(json_string)
-
-                print(f'{slot.ljust(11).title()} {item_colors[item_json["quality"]](item["name"])}', colored(f'[{item["ilevel"]}]', 'white'))
-
-            if "scale_factors" in player and len(player["scale_factors"]) > 0:
-                # print out the Pawn string
-                name = player["name"].split('_')[0]
-                player_class = player["specialization"].split(' ')[1]
-                spec = player["specialization"].split(' ')[0]
-                pawn_string = f'(Pawn: v1: \"{name}-{spec}\": Class={player_class}, Spec={spec},'
-                for stat, value in player["scale_factors"].items():
-                    pawn_string = pawn_string + f'{stat_names[stat]}={value:2.2f}, '
-                pawn_string = pawn_string.rstrip(', ') + ')'
-                print(f'\nPAWN STRING: {pawn_string}')
-
-            # print out the talents
-            print(f'\nTALENTS: {", ".join([str(t["name"]) for t in player["talents"]])}')
+def cleanup_subdir(subdir):
+    if os.path.exists(subdir):
+        if not settings.delete_temp_default and not settings.skip_questions:
+            if input(_("Do you want to remove subfolder: {}? (Press y to confirm): ").format(subdir)) != _("y"):
+                return
+        logging.info(_("Removing subdir '{}'.").format(subdir))
+        shutil.rmtree(subdir)
 
 
 def copy_result_file(last_subdir):
@@ -299,7 +452,41 @@ def validate_settings(args):
         if not os.path.exists(os.path.expanduser(settings.simc_path)):
             raise FileNotFoundError(f'Simc executable at "{settings.simc_path}" does not exist.')
         else:
-            logger.debug(f'Simc executable at "{settings.simc_path}" does not exist.')
+            logging.debug(_("Simc executable exists at '{}', proceeding...").format(settings.simc_path))
+        if os.name == "nt":
+            if not settings.simc_path.endswith("simc.exe"):
+                raise RuntimeError(_("Simc executable must end with 'simc.exe', and '{}' does not."
+                                     "Please check your settings.py simc_path options.").format(settings.simc_path))
+
+        analyzer_path = os.path.join(os.getcwd(), settings.analyzer_path, settings.analyzer_filename)
+        if os.path.exists(analyzer_path):
+            logging.info(_("Analyzer-file found at '{}'.").format(analyzer_path))
+        else:
+            raise RuntimeError(_("Analyzer-file not found at '{}', make sure you have a complete AutoSimc-Package.").
+                               format(analyzer_path))
+
+    # validate tier-set
+    min_tier_sets = 0
+    max_tier_sets = 6
+    tier_sets = {"Tier27": (t27min, t27max)
+                 }
+
+    total_min = 0
+    for tier_name, (tier_set_min, tier_set_max) in tier_sets.items():
+        if tier_set_min < min_tier_sets:
+            raise ValueError(_("Invalid tier set minimum ({} < {}) for tier '{}'").
+                             format(tier_set_min, min_tier_sets, tier_name))
+        if tier_set_max > max_tier_sets:
+            raise ValueError(_("Invalid tier set maximum ({} > {}) for tier '{}'").
+                             format(tier_set_max, max_tier_sets, tier_name))
+        if tier_set_min > tier_set_max:
+            raise ValueError(_("Tier set min > max ({} > {}) for tier '{}'")
+                             .format(tier_set_min, tier_set_max, tier_name))
+        total_min += tier_set_min
+
+    if total_min > max_tier_sets:
+        raise ValueError(_("All tier sets together have too much combined min sets ({}=sum({}) > {}).").
+                         format(total_min, [t[0] for t in tier_sets.values()], max_tier_sets))
 
     # use a "safe mode", overwriting the values
     if settings.simc_safe_mode:
@@ -313,113 +500,536 @@ def validate_settings(args):
     if settings.default_grabbing_method not in valid_grabbing_methods:
         raise ValueError(f'Invalid settings.default_grabbing_method "{settings.default_grabbing_method}"". Valid options: {valid_grabbing_methods}')
 
+        # Combine existing gems of the item with the gems supplied by --gems
+        combined_gem_list = gems_on_gear
+        combined_gem_list += gem_list
+        combined_gem_list = stable_unique(combined_gem_list)
+        # logging.debug("Combined gem list: {}".format(combined_gem_list))
+        new_gems = get_gem_combinations(combined_gem_list, len(gems_on_gear))
+        # logging.debug("New Gems: {}".format(new_gems))
+        new_combinations = []
+        for gems in new_gems:
+            new_items = copy.deepcopy(items)
+            gems_used = 0
+            for _i, (slot, num_gem_slots) in enumerate(gear_with_gems.items()):
+                copied_item = copy.deepcopy(new_items[slot])
+                copied_item.gem_ids = gems[gems_used:gems_used + num_gem_slots]
+                new_items[slot] = copied_item
+                gems_used += num_gem_slots
+            new_combinations.append(new_items)
+        #         logging.debug("Gem permutations:")
+        #         for i, comb in enumerate(new_combinations):
+        #             logging.debug("Combination {}".format(i))
+        #             for slot, item in comb.items():
+        #                 logging.debug("{}: {}".format(slot, item))
+        #             logging.debug("")
+        return new_combinations
 
-def build_player_profile(args):
-    valid_classes = ["priest",
-                     "druid",
-                     "warrior",
-                     "paladin",
-                     "hunter",
-                     "deathknight",
-                     "demonhunter",
-                     "mage",
-                     "monk",
-                     "rogue",
-                     "shaman",
-                     "warlock",
-                     ]
-    # Parse general profile options
-    simc_profile_options = ["race",
-                            "level",
-                            "server",
-                            "region",
-                            "professions",
-                            "spec",
-                            "role",
-                            "talents",
-                            "position",
-                            "azerite_essences",
-                            "covenant",
-                            "soulbind",
-                            "potion",
-                            "flask",
-                            "food",
-                            "augmentation"]
+    def update_talents(self, talents):
+        self.talents = talents
 
-    # will contain any gear in file for each slot, divided by |
-    gear = {}
-    for slot in gear_slots:
-        gear[slot[0]] = []
-    gear_in_bags = {}
-    for slot in gear_slots:
-        gear_in_bags[slot[0]] = []
+    def count_weekly_rewards(self):
+        self.weeklyRewardCount = 0
+        for item in self.items.values():
+            if item.isWeeklyReward:
+                self.weeklyRewardCount += 1
 
-    # no sections available, so parse each line individually
-    input_encoding = 'utf-8'
-    c_class = ""
-    try:
-        with open(args.inputfile, "r", encoding=input_encoding) as file_pointer:
-            player_profile = Profile()
-            player_profile.args = args
-            player_profile.simc_options = {}
-            for line in file_pointer:
-                if line == '\n':
-                    continue
-                if line.startswith('#'):
-                    if line.startswith('# bfa.reorigination_array_stacks'):
-                        splitted = line.split('=', 1)[1].rstrip().lstrip()
-                        player_profile.simc_options["bfa.reorigination_array_stacks"] = splitted
-                    if line.startswith('# SimC Addon') or line.startswith('# 8.0 Note:') or line == '' or line == '\n':
-                        continue
-                    else:
-                        # gear-in-bag handling
-                        split_line = line.replace('#', '').replace('\n', '').lstrip().rstrip().split('=', 1)
-                        for gearslot in gear_slots:
-                            if split_line[0].replace('\n', '') == gearslot[0]:
-                                gear_in_bags[split_line[0].replace('\n', '')].append(split_line[1].replace('\n', '').lstrip().rstrip())
-                            # trinket and finger-handling
-                            trinket_or_ring = split_line[0].replace('\n', '').replace('1', '').replace('2', '')
-                            if (trinket_or_ring == 'finger' or trinket_or_ring == 'trinket') and trinket_or_ring == gearslot[0]:
-                                gear_in_bags[split_line[0].replace('\n', '').replace('1', '').replace('2', '')].append(split_line[1].lstrip().rstrip())
-                else:
-                    split_line = line.split("=", 1)
-                    if split_line[0].replace('\n', '') in valid_classes:
-                        c_class = split_line[0].replace('\n', '').lstrip().rstrip()
-                        player_profile.wow_class = c_class
-                        player_profile.profile_name = split_line[1].replace('\n', '').lstrip().rstrip()
-                    if split_line[0].replace('\n', '') in simc_profile_options:
-                        player_profile.simc_options[split_line[0].replace('\n', '')] = split_line[1].replace('\n', '').lstrip().rstrip()
-                    for gearslot in gear_slots:
-                        if split_line[0].replace('\n', '') == gearslot[0]:
-                            gear[split_line[0].replace('\n', '')].append(split_line[1].replace('\n', '').lstrip().rstrip())
-                        # trinket and finger-handling
-                        trinket_or_ring = split_line[0].replace('\n', '').replace('1', '').replace('2', '')
-                        if (trinket_or_ring == 'finger' or trinket_or_ring == 'trinket') and trinket_or_ring == gearslot[0]:
-                            gear[split_line[0].replace('\n', '').replace('1', '').replace('2', '')].append(split_line[1].lstrip().rstrip())
+    def count_tier(self):
+        self.t27 = 0
+        for item in self.items.values():
+            if item.tier_27:
+                self.t27 += 1
 
-    except UnicodeDecodeError as ex:
-        raise RuntimeError("""AutoSimC could not decode your input file '{file}' with encoding '{enc}'.
-        Please make sure that your text editor encodes the file as '{enc}',
-        or as a quick fix remove any special characters from your character name.""".format(file=args.inputfile, enc=input_encoding)) from ex
+    def count_legendaries(self):
+        self.legendaries_equipped = 0
+        for item in self.items.values():
+            if item.item_id in shadowlands_legendary_ids:
+                self.legendaries_equipped += 1
 
-    if c_class != '':
-        player_profile.class_spec = specdata.getClassSpec(c_class, player_profile.simc_options["spec"])
-        player_profile.class_role = specdata.getRole(c_class, player_profile.simc_options["spec"])
+    def check_usable_before_talents(self):
+        self.count_tier()
+        self.count_weekly_rewards()
+        self.count_legendaries()
 
-    # Build 'general' profile options which do not permutate once into a simc-string
-    logger.info(f'SimC options: {player_profile.simc_options}')
-    player_profile.general_options = "\n".join(["{}={}".format(key, value) for key, value in
-                                               player_profile.simc_options.items()])
-    logger.debug(f'Built simc general options string: {player_profile.general_options}')
+        if self.legendaries_equipped > 1:
+            return "too many legendaries equipped"
+        if self.weeklyRewardCount > 1:
+            return "too many weekly reward items equipped"
+        if self.t27 < t27min:
+            return "too few tier 27 items"
+        if self.t27 > t27max:
+            return "too many tier 27 items"
 
-    # Parse gear
-    player_profile.simc_options["gear"] = gear
-    player_profile.simc_options["gearInBag"] = gear_in_bags
+        return None
 
-    return player_profile
+    def get_profile_name(self, valid_profile_number):
+        # namingdata contains info for the profile-name
+        namingData = {"T27": ""}
+
+        for tier in ([27]):
+            count = getattr(self, "t" + str(tier))
+            tiername = "T" + str(tier)
+            if count:
+                pieces = 0
+                if count >= 2:
+                    pieces = 2
+                if count >= 4:
+                    pieces = 4
+                    namingData[tiername] = "_{}_{}p".format(tiername, pieces)
+
+        return str(valid_profile_number).rjust(self.max_profile_chars, "0")
+
+    def get_profile(self):
+        items = []
+        # Hack for now to get Txx and L strings removed from items
+        for item in self.items.values():
+            items.append(item.output_str)
+        return "\n".join(items)
+
+    def write_to_file(self, filehandler, valid_profile_number, additional_options):
+        profile_name = self.get_profile_name(valid_profile_number)
+
+        filehandler.write("{}={}\n".format(self.profile.wow_class,
+                                           str.replace(self.profile.profile_name, "\"", "") + "_" + profile_name))
+        filehandler.write(self.profile.general_options)
+        filehandler.write("\ntalents={}\n".format(self.talents))
+        filehandler.write(self.get_profile())
+        filehandler.write("\n{}\n".format(additional_options))
+        filehandler.write("\n")
 
 
-def check_results_file(subdir):
+class Item:
+    """WoW Item"""
+    tiers = [27]
+
+    def __init__(self, slot, is_weekly_reward, input_string=""):
+        self._slot = slot
+        self.name = ""
+        self.item_id = 0
+        self.bonus_ids = []
+        self.enchant_ids = []
+        self._gem_ids = []
+        self.drop_level = 0
+        self.tier_set = {}
+        self.extra_options = {}
+        self._isWeeklyReward = is_weekly_reward
+
+        for tier in self.tiers:
+            n = "T{}".format(tier)
+            if self.name.startswith(n):
+                setattr(self, "tier_{}".format(tier), True)
+                self.name = self.name[len(n):]
+            else:
+                setattr(self, "tier_{}".format(tier), False)
+        if len(input_string):
+            self.parse_input(input_string.strip("\""))
+
+        self._build_output_str()  # Pre-Build output string as good as possible
+
+    @property
+    def slot(self):
+        return self._slot
+
+    @slot.setter
+    def slot(self, value):
+        self._slot = value
+        self._build_output_str()
+
+    @property
+    def isWeeklyReward(self):
+        return self._isWeeklyReward
+
+    @isWeeklyReward.setter
+    def isWeeklyReward(self, value):
+        self._isWeeklyReward = value
+        self._build_output_str()
+
+    @property
+    def gem_ids(self):
+        return self._gem_ids
+
+    @gem_ids.setter
+    def gem_ids(self, value):
+        self._gem_ids = value
+        self._build_output_str()
+
+    def parse_input(self, input_string):
+        parts = input_string.split(",")
+        self.name = parts[0]
+
+        for tier in self.tiers:
+            n = "T{}".format(tier)
+            if self.name.startswith(n):
+                setattr(self, "tier_{}".format(tier), True)
+                self.name = self.name[len(n):]
+            else:
+                setattr(self, "tier_{}".format(tier), False)
+
+        splitted_name = self.name.split("--")
+        if len(splitted_name) > 1:
+            self.name = splitted_name[1]
+
+        for s in parts[1:]:
+            name, value = s.split("=")
+            name = name.lower()
+            if name == "id":
+                self.item_id = int(value)
+            elif name == "bonus_id":
+                self.bonus_ids = [int(v) for v in value.split("/")]
+            elif name == "enchant_id":
+                self.enchant_ids = [int(v) for v in value.split("/")]
+            elif name == "gem_id":
+                self.gem_ids = [int(v) for v in value.split("/")]
+            elif name == "drop_level":
+                self.drop_level = int(value)
+            else:
+                if name not in self.extra_options:
+                    self.extra_options[name] = []
+                self.extra_options[name].append(value)
+
+    def _build_output_str(self):
+        self.output_str = "{}={},id={}". \
+            format(self.slot,
+                   self.name,
+                   self.item_id)
+        if len(self.bonus_ids):
+            self.output_str += ",bonus_id=" + "/".join([str(v) for v in self.bonus_ids])
+        if len(self.enchant_ids):
+            self.output_str += ",enchant_id=" + "/".join([str(v) for v in self.enchant_ids])
+        if len(self.gem_ids):
+            self.output_str += ",gem_id=" + "/".join([str(v) for v in self.gem_ids])
+        if self.drop_level > 0:
+            self.output_str += ",drop_level=" + str(self.drop_level)
+        for name, values in self.extra_options.items():
+            for value in values:
+                self.output_str += ",{}={}".format(name, value)
+
+    def __str__(self):
+        return "Item({})".format(self.output_str)
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __eq__(self, other):
+        return self.__str__() == other.__str__()
+
+    def __hash__(self):
+        # We are just lazy and use __str__ to avoid all the complexity about having mutable members, etc.
+        return hash(str(self.__dict__))
+
+
+def product(*iterables):
+    """
+    Custom product function as a generator, instead of itertools.product
+    This uses way less memory than itertools.product, because it is a generator only yielding a single item at a time.
+    requirement for this is that each iterable can be restarted.
+    Thanks to https://stackoverflow.com/a/12094519
+    """
+    if len(iterables) == 0:
+        yield ()
+    else:
+        iterables = iterables
+        it = iterables[0]
+        for item in iter(it):
+            for items in product(*iterables[1:]):
+                yield (item,) + items
+
+
+# generate map of id->type pairs
+def initWeaponData():
+    # weapondata is directly derived from blizzard-datatables
+    # Thanks to Theunderminejournal.com for providing the database:
+    # http://newswire.theunderminejournal.com/phpMyAdmin
+    # SELECT id, type
+    # FROM `tblDBCItem`
+    # WHERE type = 13 or type = 14 or type = 15 or type = 17
+    # or type = 21 or type = 22 or type = 23 or type = 26
+    #
+    # type is important:
+    # 13: onehand                                                   -mh, oh
+    # 14: shield                                                    -oh
+    # 15: bow                                                       -mh
+    # 17: twohand (two twohanders are allowed for fury-warriors)    -mh, oh
+    # 21: offhand-weapon                                            -oh
+    # 22: offhand special stuff                                     -oh
+    # 23: offhand                                                   -oh
+    # 26: gun                                                       -mh
+    #
+    # WE REALLY DONT CARE if you can equip it or not, if it has str or int
+    # we only use it to distinguish whether to put it into main_hand or off_hand slot
+    #
+    # therefore, if a warrior tries to sim a polearm, it would be assigned to the main_Hand (possibly two, if fury), but
+    # the stats etc. would not be taken into account by simulationcraft
+    # similar to weird combinations like bow and offhand or onehand and shield for druids
+    # => disable those items or sell them, or implement a validation-check, no hunter needs a shield...
+
+    global weapondata
+    weapondata = {}
+    with open('weapondata.json', "r", encoding='utf-8') as data_file:
+        weapondata_json = json.load(data_file)
+
+        for weapon in weapondata_json:
+            weapondata[weapon['id']] = WeaponType(int(weapon['type']))
+    # always create one offhand-item which is used as dummy for twohand-permutations
+    weapondata["-1"] = WeaponType.DUMMY
+
+
+def isValidWeaponPermutation(permutation, player_profile):
+    mh_type = weapondata[str(permutation[10].item_id)]
+    oh_type = weapondata[str(permutation[11].item_id)]
+
+    # only gun or bow is equippable
+    if (mh_type is WeaponType.BOW or mh_type is WeaponType.GUN) and oh_type is None:
+        return True
+    if player_profile.wow_class != "hunter" and (mh_type is WeaponType.BOW or mh_type is WeaponType.GUN):
+        return False
+    # only warriors can wield twohanders in offhand
+    if player_profile.wow_class != "warrior" and oh_type is WeaponType.TWOHAND:
+        return False
+    # no true offhand in mainhand possible
+    if mh_type is WeaponType.SHIELD or mh_type is WeaponType.OFFHAND:
+        return False
+    if player_profile.wow_class != "warrior" and mh_type is WeaponType.TWOHAND and (
+            oh_type is WeaponType.OFFHAND or oh_type is WeaponType.SHIELD):
+        return False
+
+    return True
+
+
+def permutate(args, player_profile):
+    print(_("Combinations in progress..."))
+
+    parsed_gear = collections.OrderedDict({})
+
+    gear = player_profile.simc_options.get('gear')
+    gearInBags = player_profile.simc_options.get('gearInBag')
+    weeklyRewards = player_profile.simc_options.get('weeklyRewards')
+
+    # concatenate gear in bags to normal gear-list
+    for b in gearInBags:
+        if b in gear:
+            if len(gear[b]) > 0:
+                currentGear = gear[b][0]
+                if b == "finger" or b == "trinket":
+                    currentGear = currentGear + "|" + gear[b][1]
+                for foundGear in gearInBags.get(b):
+                    currentGear = currentGear + "|" + foundGear
+                gear[b] = currentGear
+            else:
+                gear[b] = gearInBags.get(b)
+
+    # concatenate weekly rewards to normal gear-list
+    for b in weeklyRewards:
+        if b in gear:
+            if len(gear[b]) > 0:
+                currentGear = gear[b]
+                if b == "finger" or b == "trinket":
+                    currentGear = currentGear + "|" + gear[b][1]
+                for foundGear in weeklyRewards.get(b):
+                    currentGear = currentGear + "|" + foundGear
+                gear[b] = currentGear
+            else:
+                gear[b] = weeklyRewards.get(b)
+
+    for gear_slot in gear_slots:
+        slot_base_name = gear_slot[0]  # First mentioned "correct" item name
+        parsed_gear[slot_base_name] = []
+        # create a dummy-item so no_offhand-combinations are not being dismissed later in the product-function
+        if slot_base_name == "off_hand":
+            item = Item("off_hand", False, "")
+            item.item_id = -1
+            parsed_gear["off_hand"] = [item]
+        for entry in gear_slot:
+            if entry in gear:
+                if len(gear[entry]) > 0:
+                    for s in gear[entry].split("|"):
+                        in_weekly_rewards = False
+                        if s in weeklyRewards[slot_base_name]:
+                            in_weekly_rewards = True
+                        parsed_gear[slot_base_name].append(Item(slot_base_name, in_weekly_rewards, s))
+        if len(parsed_gear[slot_base_name]) == 0:
+            # We havent found any items for that slot, add empty dummy item
+            parsed_gear[slot_base_name] = [Item(slot_base_name, False, "")]
+
+
+    logging.debug(_("Parsed gear: {}").format(parsed_gear))
+
+    if args.gems is not None:
+        splitted_gems = build_gem_list(args.gems)
+
+    # Filter each slot to only have unique items, before doing any gem permutation.
+    for key, value in parsed_gear.items():
+        parsed_gear[key] = stable_unique(value)
+
+    # This represents a dict of all options which will be permutated fully with itertools.product
+    normal_permutation_options = collections.OrderedDict({})
+
+    # Add talents to permutations
+    l_talents = player_profile.simc_options.get("talents")
+    talent_permutations = permutate_talents(l_talents)
+
+    # Calculate max number of gem slots in equip. Will be used if we do gem permutations.
+    if args.gems is not None:
+        max_gem_slots = 0
+        for _slot, items in parsed_gear.items():
+            max_gem_on_item_slot = 0
+            for item in items:
+                if len(item.gem_ids) > max_gem_on_item_slot:
+                    max_gem_on_item_slot = len(item.gem_ids)
+            max_gem_slots += max_gem_on_item_slot
+
+    # Add 'normal' gear to normal permutations, excluding trinket/rings
+    gear_normal = {k: v for k, v in parsed_gear.items() if (not k == "finger" and not k == "trinket")}
+    normal_permutation_options.update(gear_normal)
+
+    # Calculate normal permutations
+    normal_permutations = product(*normal_permutation_options.values())
+    logging.debug(_("Building permutations matrix finished."))
+
+    special_permutations_config = {"finger": ("finger1", "finger2"),
+                                   "trinket": ("trinket1", "trinket2")
+                                   }
+    special_permutations = {}
+    for name, values in special_permutations_config.items():
+        # Get entries from parsed gear, exclude empty finger/trinket lines
+        entries = [v for k, v in parsed_gear.items() if k.startswith(name)]
+        entries = list(itertools.chain(*entries))
+
+        # Remove empty (id=0) items from trinket/rings, except if there are 0 ring/trinkets specified. Then we need
+        # the single dummy item
+        remove_empty_entries = [item for item in entries if item.item_id != 0]
+        if len(remove_empty_entries):
+            entries = remove_empty_entries
+
+        logging.debug(_("Input list for special permutation '{}': {}").format(name,
+                                                                              entries))
+        if args.unique_jewelry:
+            # Unique finger/trinkets.
+            permutations = itertools.combinations(entries, len(values))
+        else:
+            permutations = itertools.combinations_with_replacement(entries, len(values))
+        permutations = list(permutations)
+        for i, (item1, item2) in enumerate(permutations):
+            new_item1 = copy.deepcopy(item1)
+            new_item1.slot = values[0]
+            new_item2 = copy.deepcopy(item2)
+            new_item2.slot = values[1]
+            permutations[i] = (new_item1, new_item2)
+
+        logging.debug(_("Got {num} permutations for {item_name}.").format(num=len(permutations),
+                                                                          item_name=name))
+        for p in permutations:
+            logging.debug(p)
+
+        # Remove equal id's
+        if args.unique_jewelry:
+            permutations = [p for p in permutations if p[0].item_id != p[1].item_id]
+            logging.debug(_("Got {num} permutations for {item_name} after id filter.")
+                          .format(num=len(permutations),
+                                  item_name=name))
+            for p in permutations:
+                logging.debug(p)
+        # Make unique
+        permutations = stable_unique(permutations)
+        logging.info(_("Got {num} permutations for {item_name} after unique filter.")
+                     .format(num=len(permutations),
+                             item_name=name))
+        for p in permutations:
+            logging.debug(p)
+
+        entry_dict = {v: None for v in values}
+        special_permutations[name] = [name, entry_dict, permutations]
+
+    # Calculate & Display number of permutations
+    max_nperm = 1
+    for name, perm in normal_permutation_options.items():
+        max_nperm *= len(perm)
+    permutations_product = {_("normal gear&talents"): "{} ({})".format(max_nperm,
+                                                                       {name: len(items) for name, items in
+                                                                        normal_permutation_options.items()}
+                                                                       )
+                            }
+    for name, _entries, opt in special_permutations.values():
+        max_nperm *= len(opt)
+        permutations_product[name] = len(opt)
+    max_nperm *= len(talent_permutations)
+    gem_perms = 1
+    if args.gems is not None:
+        max_num_gems = max_gem_slots + len(splitted_gems)
+        gem_perms = len(list(itertools.combinations_with_replacement(range(max_gem_slots), max_num_gems)))
+        max_nperm *= gem_perms
+        permutations_product["gems"] = gem_perms
+    permutations_product["talents"] = len(talent_permutations)
+    logging.info(_("Max number of normal permutations: {}").format(max_nperm))
+    logging.info(_("Number of permutations: {}").format(permutations_product))
+    max_profile_chars = len(str(max_nperm))  # String length of max_nperm
+
+    # Get Additional options string
+    additional_options = get_additional_input()
+
+    # Start the permutation!
+    processed = 0
+    progress = 0  # Separate progress variable not counting gem and talent combinations
+    max_progress = max_nperm / gem_perms / len(talent_permutations)
+    valid_profiles = 0
+    start_time = datetime.datetime.now()
+    unusable_histogram = {}  # Record not usable reasons
+    with open(args.outputfile, 'w') as output_file:
+        for perm_normal in normal_permutations:
+            if isValidWeaponPermutation(perm_normal, player_profile):
+                for perm_finger in special_permutations["finger"][2]:
+                    for perm_trinket in special_permutations["trinket"][2]:
+                        entries = perm_normal
+                        entries += perm_finger
+                        entries += perm_trinket
+                        items = {e.slot: e for e in entries if type(e) is Item}
+                        data = PermutationData(items, player_profile, max_profile_chars)
+                        is_unusable_before_talents = data.check_usable_before_talents()
+                        if not is_unusable_before_talents:
+                            # add gem-permutations to gear
+                            if args.gems is not None:
+                                gem_permutations = data.permutate_gems(items, splitted_gems)
+                            else:
+                                gem_permutations = (items,)
+                            for gem_permutation in gem_permutations:
+                                data.items = gem_permutation
+                                # Permutate talents after is usable check, since it is independent of the talents
+                                for t in talent_permutations:
+                                    data.update_talents(t)
+                                    # Additional talent usable check could be inserted here.
+                                    data.write_to_file(output_file, valid_profiles, additional_options)
+                                    valid_profiles += 1
+                                    processed += 1
+                        else:
+                            processed += len(talent_permutations) * gem_perms
+                            if is_unusable_before_talents not in unusable_histogram:
+                                unusable_histogram[is_unusable_before_talents] = 0
+                            unusable_histogram[is_unusable_before_talents] += len(talent_permutations) * gem_perms
+                        progress += 1
+                        print_permutation_progress(valid_profiles, processed, max_nperm, start_time, max_profile_chars,
+                                                   progress, max_progress)
+
+    result = _("Finished permutations. Valid: {:n} of {:n} processed. ({:.2f}%)"). \
+        format(valid_profiles,
+               processed,
+               100.0 * valid_profiles / max_nperm if max_nperm else 0.0)
+    logging.info(result)
+
+    # Not usable histogram debug output
+    unusable_string = []
+    for key, value in unusable_histogram.items():
+        unusable_string.append("{:40s}: {:12b} ({:5.2f}%)".
+                               format(key, value, value * 100.0 / max_nperm if max_nperm else 0.0))
+    logging.info(_("Invalid profile statistics: [\n{}]").format("\n".join(unusable_string)))
+
+    # Print checksum so we can check for equality when making changes in the code
+    outfile_checksum = file_checksum(args.outputfile)
+    logging.info(_("Output file checksum: {}").format(outfile_checksum))
+
+    return valid_profiles
+
+
+def checkResultFiles(subdir):
     """Check the SimC result files of a previous stage for validity."""
     subdir = os.path.join(os.getcwd(), subdir)
 
@@ -597,12 +1207,19 @@ def main():
 
     args = parse_command_line_args()
 
-    logger.debug(f'Parsed command line arguments: {args}')
-    logger.debug(f'Parsed settings: {vars(settings)}')
+    if args.sim:
+        if not settings.auto_download_simc:
+            if settings.check_simc_version:
+                filename, latest = determineLatestSimcVersion()
+                ondisc = determineSimcVersionOnDisc()
+                if latest != ondisc:
+                    logging.info(_("A newer SimCraft-version might be available for download! Version: {}").
+                                 format(filename))
+        autoDownloadSimc()
+    validateSettings(args)
 
-    validate_settings(args)
-
-    player_profile = build_player_profile(args)
+    initWeaponData()
+    player_profile = AddonImporter.build_profile_simc_addon(args, gear_slots, Profile(), specdata)
 
     # can always be rerun since it is now deterministic
     permutator = Permutator(args.additionalfile, logger, player_profile, args.gems, args.unique_jewelry, args.outputfile)
